@@ -3,10 +3,9 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Artikelregistratie v2.0</title>
+<title>Artikelregistratie v2.1</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #0f1117; color: #e2e8f0; font-family: system-ui, sans-serif; font-size: 14px; }
@@ -29,7 +28,6 @@ const D_LEV = [
   { id:"l2", naam:"Technisch Bureau Janssen", contact:"Jan de Vries", tel:"06-12345678", email:"jdevries@tbj.nl", opmerking:"15% korting op flowmeters. Betalingstermijn 30 dagen." },
   { id:"l3", naam:"Technics Supply", contact:"Mark van den Berg", tel:"020-1234567", email:"info@techsupply.nl", opmerking:"" },
 ];
-
 const D_PRJ = [
   { id:"p1", nr:"PRJ-2024-014", naam:"Waterzuivering Noord", subs:[
     { id:"s1", naam:"Fase 1 — Inname",       rks:["RK-101","RK-102"] },
@@ -39,7 +37,6 @@ const D_PRJ = [
     { id:"s3", naam:"Hoofdinstallatie",        rks:["RK-301","RK-302"] },
   ]},
 ];
-
 const D_BEST = [
   { id:"b1", levId:"l1", prjId:"p1", subId:"s1", status:"geleverd",
     heeftOff:true,  offNr:"OFF-2024-0155", offDat:"2024-02-20",
@@ -67,13 +64,26 @@ const D_BEST = [
       { id:"a6", merk:"ABB", type:"FS400 Flowmeter", n:2, opm:"" },
     ]},
 ];
-
 const D_ASSETS = [
   { id:"as1", rk:"RK-101", opcode:"FT-101", artId:"a1", merk:"Belimo", type:"EV015", st:"beschikbaar", uitDat:"", aan:"", firma:"" },
   { id:"as2", rk:"RK-101", opcode:"FT-102", artId:"a1", merk:"Belimo", type:"EV015", st:"beschikbaar", uitDat:"", aan:"", firma:"" },
   { id:"as3", rk:"RK-102", opcode:"FT-201", artId:"a1", merk:"Belimo", type:"EV015", st:"uitgegeven",  uitDat:"2024-03-15", aan:"P. Bakker", firma:"Installatietechniek BV" },
   { id:"as4", rk:"RK-101", opcode:"PT-101", artId:"a2", merk:"Belimo", type:"EV030", st:"beschikbaar", uitDat:"", aan:"", firma:"" },
 ];
+
+/* ═══════════════════════════════════════════════════════════════
+   CSV HELPER
+═══════════════════════════════════════════════════════════════ */
+function downloadCSV(filename, headers, rows) {
+  const esc = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const lines = [headers.map(esc).join(','), ...rows.map(r => r.map(esc).join(','))];
+  const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
 
 /* ═══════════════════════════════════════════════════════════════
    DESIGN TOKENS & STYLE HELPERS
@@ -83,10 +93,11 @@ const C = {
   acc:"#f59e0b", blue:"#3b82f6", grn:"#22c55e", red:"#ef4444",
   mut:"#64748b", txt:"#e2e8f0",
 };
-const card = x => ({ background:C.sur, border:`1px solid ${C.bdr}`, borderRadius:8, padding:20, marginBottom:16, ...x });
-const inp  = x => ({ width:"100%", background:C.bg, border:`1px solid ${C.bdr}`, color:C.txt, fontFamily:"monospace", fontSize:13, padding:"7px 10px", borderRadius:5, outline:"none", ...x });
-const lbl  = { display:"block", fontSize:11, fontWeight:600, color:C.mut, textTransform:"uppercase", letterSpacing:".06em", marginBottom:4 };
-const btn  = (col=C.acc, fill=true, x={}) => ({ background:fill?col:"transparent", color:fill?"#000":col, border:`1px solid ${fill?"transparent":col+"60"}`, padding:"6px 14px", borderRadius:5, cursor:"pointer", fontSize:12, fontWeight:700, display:"inline-flex", alignItems:"center", gap:5, ...x });
+const card  = x => ({ background:C.sur, border:`1px solid ${C.bdr}`, borderRadius:8, padding:20, marginBottom:16, ...x });
+const inp   = x => ({ width:"100%", background:C.bg, border:`1px solid ${C.bdr}`, color:C.txt, fontFamily:"monospace", fontSize:13, padding:"7px 10px", borderRadius:5, outline:"none", ...x });
+const lbl   = { display:"block", fontSize:11, fontWeight:600, color:C.mut, textTransform:"uppercase", letterSpacing:".06em", marginBottom:4 };
+const btn   = (col=C.acc, fill=true, x={}) => ({ background:fill?col:"transparent", color:fill?"#000":col, border:`1px solid ${fill?"transparent":col+"60"}`, padding:"6px 14px", borderRadius:5, cursor:"pointer", fontSize:12, fontWeight:700, display:"inline-flex", alignItems:"center", gap:5, ...x });
+const ibtn  = (col, x={}) => btn(col, false, { padding:"3px 9px", fontSize:11, ...x });
 
 const ST = {
   offerte:    { l:"Offerte",    c:"#a855f7", bg:"rgba(168,85,247,.15)" },
@@ -126,7 +137,7 @@ function SH({ t }) {
 }
 function PH({ title, action }) {
   return React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }},
-    React.createElement(SH, { t:title }),
+    React.createElement("div", { style:{ fontSize:11, fontWeight:700, color:C.mut, textTransform:"uppercase", letterSpacing:".08em" }}, title),
     React.createElement("div", { style:{ display:"flex", gap:8 }}, action)
   );
 }
@@ -135,6 +146,12 @@ function InfoChip({ label, value, color }) {
     React.createElement("div", { style:{ fontSize:10, color:C.mut, fontWeight:600, textTransform:"uppercase", letterSpacing:".05em", marginBottom:3 }}, label),
     React.createElement("div", { style:{ fontFamily:"monospace", fontSize:12, fontWeight:600, color:color||C.txt }}, value)
   );
+}
+function CsvBtn({ onClick }) {
+  return React.createElement("button", { onClick, style:btn(C.grn, false, { padding:"6px 12px", fontSize:11 }) }, "⬇ CSV");
+}
+function ConfirmDel({ msg, onConfirm }) {
+  return window.confirm(msg) ? onConfirm() : null;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -165,51 +182,40 @@ function App() {
       s.rks.map(r => ({ v:r, l:`${r}  —  ${p.nr} / ${s.naam}`, prjId:p.id, subId:s.id }))
     )), [prjs]);
 
-  // BUG FIX: tel per (merk+type) combinatie hoeveel assets al gecodeerd zijn,
-  // zodat artikelen uit nieuwe bestellingen (met gegenereerde id's) ook matchen.
   const assetCnt = useMemo(() => {
     const c = {};
-    assets.forEach(a => {
-      const key = `${a.merk}||${a.type}`;
-      c[key] = (c[key] || 0) + 1;
-    });
+    assets.forEach(a => { const k=`${a.merk}||${a.type}`; c[k]=(c[k]||0)+1; });
     return c;
   }, [assets]);
 
-  // BUG FIX: match op merk+type in plaats van artId
   const availArts = useMemo(() =>
-    bests.filter(b => b.status === "geleverd").flatMap(b =>
+    bests.filter(b => b.status==="geleverd").flatMap(b =>
       b.arts.map(a => {
-        const key = `${a.merk}||${a.type}`;
-        const coded = assetCnt[key] || 0;
-        return { ...a, coded, remaining: a.n - coded, bestId: b.id };
-      }).filter(a => a.remaining > 0)
+        const key=`${a.merk}||${a.type}`;
+        const coded=assetCnt[key]||0;
+        return { ...a, coded, remaining:a.n-coded, bestId:b.id };
+      }).filter(a => a.remaining>0)
     ), [bests, assetCnt]);
 
   const shared = { levs, setLevs, prjs, setPrjs, bests, setBests, assets, setAssets, allRK, availArts, lastRK, setLastRK };
 
   return React.createElement("div", { style:{ display:"flex", height:"100vh", background:C.bg, color:C.txt, fontFamily:"system-ui,sans-serif", fontSize:14 }},
-    /* SIDEBAR */
     React.createElement("div", { style:{ width:176, background:C.sur, borderRight:`1px solid ${C.bdr}`, display:"flex", flexDirection:"column", flexShrink:0 }},
       React.createElement("div", { style:{ padding:"14px 12px", borderBottom:`1px solid ${C.bdr}` }},
         React.createElement("div", { style:{ fontFamily:"monospace", fontWeight:800, fontSize:11, color:C.acc, letterSpacing:".06em" }}, "▣ ARTIKELREG."),
-        React.createElement("div", { style:{ fontSize:10, color:C.mut, marginTop:2 }}, "v2.0 — demo")
+        React.createElement("div", { style:{ fontSize:10, color:C.mut, marginTop:2 }}, "v2.1 — demo")
       ),
       React.createElement("nav", { style:{ padding:8, flex:1 }},
         NAV.map(n => React.createElement("button", {
-          key: n.id,
-          onClick: () => setPage(n.id),
-          style: {
-            display:"flex", alignItems:"center", gap:8, width:"100%", padding:"8px 10px",
-            background: page===n.id ? "rgba(245,158,11,.12)" : "none",
-            border: page===n.id ? "1px solid rgba(245,158,11,.25)" : "1px solid transparent",
-            color: page===n.id ? C.acc : C.mut, borderRadius:6, cursor:"pointer",
-            fontSize:12, fontWeight: page===n.id ? 600 : 400, marginBottom:2, textAlign:"left"
-          }
+          key:n.id, onClick:()=>setPage(n.id),
+          style:{ display:"flex", alignItems:"center", gap:8, width:"100%", padding:"8px 10px",
+            background:page===n.id?"rgba(245,158,11,.12)":"none",
+            border:page===n.id?"1px solid rgba(245,158,11,.25)":"1px solid transparent",
+            color:page===n.id?C.acc:C.mut, borderRadius:6, cursor:"pointer",
+            fontSize:12, fontWeight:page===n.id?600:400, marginBottom:2, textAlign:"left" }
         }, React.createElement("span", { style:{ fontSize:15 }}, n.icon), n.label))
       )
     ),
-    /* CONTENT */
     React.createElement("div", { style:{ flex:1, overflow:"auto", padding:24 }},
       page==="leveranciers"  && React.createElement(LevPage,   shared),
       page==="projecten"     && React.createElement(PrjPage,   shared),
@@ -227,34 +233,46 @@ function App() {
 function LevPage({ levs, setLevs }) {
   const empty = { naam:"", contact:"", tel:"", email:"", opmerking:"" };
   const [form, setForm] = useState(null);
-  const set = k => e => setForm(p => ({...p, [k]: e.target.value}));
+  const set = k => e => setForm(p => ({...p, [k]:e.target.value}));
 
   const save = () => {
     if (!form?.naam) return;
     if (form.id) setLevs(p => p.map(l => l.id===form.id ? form : l));
-    else setLevs(p => [...p, {...form, id:`l-${Date.now()}`}]);
+    else          setLevs(p => [...p, {...form, id:`l-${Date.now()}`}]);
     setForm(null);
   };
 
+  const del = l => {
+    if (!window.confirm(`"${l.naam}" verwijderen?`)) return;
+    setLevs(p => p.filter(x => x.id!==l.id));
+  };
+
+  const csvLevs = () => downloadCSV('leveranciers.csv',
+    ['Naam','Contactpersoon','Telefoon','E-mail','Opmerkingen'],
+    levs.map(l => [l.naam, l.contact, l.tel, l.email, l.opmerking])
+  );
+
   return React.createElement("div", { style:{ maxWidth:900 }},
     React.createElement(PH, { title:`Leveranciers (${levs.length})`, action:
-      React.createElement("button", { onClick:()=>setForm(empty), style:btn() }, "+ Nieuw")
+      React.createElement(React.Fragment, null,
+        React.createElement(CsvBtn, { onClick:csvLevs }),
+        React.createElement("button", { onClick:()=>setForm(empty), style:btn() }, "+ Nieuw")
+      )
     }),
     form && React.createElement("div", { style:card({ border:`1px solid ${C.acc}50`, marginBottom:24 })},
-      React.createElement(SH, { t: form.id ? "Leverancier bewerken" : "Nieuwe leverancier" }),
+      React.createElement(SH, { t:form.id?"Leverancier bewerken":"Nieuwe leverancier" }),
       React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:14, marginBottom:14 }},
         React.createElement(FI, { label:"Bedrijfsnaam *", value:form.naam,    onChange:set("naam"),    placeholder:"Bedrijf BV" }),
         React.createElement(FI, { label:"Contactpersoon", value:form.contact, onChange:set("contact"), placeholder:"Naam" }),
         React.createElement(FI, { label:"Telefoon",       value:form.tel,     onChange:set("tel"),     placeholder:"06-..." })
       ),
       React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 2fr", gap:14, marginBottom:16 }},
-        React.createElement(FI, { label:"E-mail", value:form.email, onChange:set("email"), placeholder:"info@..." }),
-        React.createElement(FT, { label:"Opmerkingen", value:form.opmerking, onChange:set("opmerking") })
+        React.createElement(FI, { label:"E-mail",     value:form.email,    onChange:set("email"),    placeholder:"info@..." }),
+        React.createElement(FT, { label:"Opmerkingen",value:form.opmerking,onChange:set("opmerking") })
       ),
       React.createElement("div", { style:{ display:"flex", gap:8 }},
         React.createElement("button", { onClick:save, style:btn() }, "✓ Opslaan"),
-        React.createElement("button", { onClick:()=>setForm(null), style:btn(C.mut,false) }, "Annuleren"),
-        form.id && React.createElement("button", { onClick:()=>{ setLevs(p=>p.filter(l=>l.id!==form.id)); setForm(null); }, style:btn(C.red,false) }, "Verwijderen")
+        React.createElement("button", { onClick:()=>setForm(null), style:btn(C.mut,false) }, "Annuleren")
       )
     ),
     levs.map(l => React.createElement("div", { key:l.id, style:card({ display:"flex", alignItems:"start", gap:16 })},
@@ -267,7 +285,10 @@ function LevPage({ levs, setLevs }) {
         ),
         l.opmerking && React.createElement("div", { style:{ marginTop:8, fontSize:12, color:"#94a3b8", background:C.sur2, borderRadius:4, padding:"6px 10px", borderLeft:`3px solid ${C.acc}60` }}, l.opmerking)
       ),
-      React.createElement("button", { onClick:()=>setForm({...l}), style:{...btn(C.blue,false), padding:"4px 10px", fontSize:11} }, "✏ Bewerken")
+      React.createElement("div", { style:{ display:"flex", gap:6, flexShrink:0 }},
+        React.createElement("button", { onClick:()=>setForm({...l}), style:ibtn(C.blue) }, "✏ Bewerken"),
+        React.createElement("button", { onClick:()=>del(l), style:ibtn(C.red) }, "🗑 Verwijderen")
+      )
     ))
   );
 }
@@ -276,11 +297,14 @@ function LevPage({ levs, setLevs }) {
    PAGINA: PROJECTEN
 ═══════════════════════════════════════════════════════════════ */
 function PrjPage({ prjs, setPrjs }) {
-  const [exp,    setExp]    = useState({});
-  const [adding, setAdding] = useState(null);
-  const [val,    setVal]    = useState("");
-  const [val2,   setVal2]   = useState("");
-  const toggle = id => setExp(p => ({...p, [id]: !p[id]}));
+  const [exp,     setExp]     = useState({});
+  const [adding,  setAdding]  = useState(null);
+  const [val,     setVal]     = useState("");
+  const [val2,    setVal2]    = useState("");
+  const [editPrj, setEditPrj] = useState(null);
+  const [editSub, setEditSub] = useState(null);
+
+  const toggle = id => setExp(p => ({...p, [id]:!p[id]}));
 
   const doAdd = () => {
     if (!val.trim()) return;
@@ -292,15 +316,61 @@ function PrjPage({ prjs, setPrjs }) {
         : prj));
     } else if (adding.type==="rk") {
       setPrjs(p => p.map(prj => ({
-        ...prj, subs: prj.subs.map(s => s.id===adding.subId ? {...s, rks:[...s.rks, val.trim()]} : s)
+        ...prj, subs:prj.subs.map(s => s.id===adding.subId ? {...s, rks:[...s.rks, val.trim()]} : s)
       })));
     }
     setAdding(null); setVal(""); setVal2("");
   };
 
+  const saveEditPrj = () => {
+    if (!editPrj?.nr) return;
+    setPrjs(p => p.map(prj => prj.id===editPrj.id ? {...prj, nr:editPrj.nr, naam:editPrj.naam} : prj));
+    setEditPrj(null);
+  };
+
+  const saveEditSub = () => {
+    if (!editSub?.naam) return;
+    setPrjs(p => p.map(prj => ({
+      ...prj, subs:prj.subs.map(s => s.id===editSub.subId ? {...s, naam:editSub.naam} : s)
+    })));
+    setEditSub(null);
+  };
+
+  const delPrj = id => {
+    if (!window.confirm('Project verwijderen? Alle subprojecten en regelkasten worden ook verwijderd.')) return;
+    setPrjs(p => p.filter(prj => prj.id!==id));
+  };
+
+  const delSub = (prjId, subId) => {
+    if (!window.confirm('Subproject verwijderen?')) return;
+    setPrjs(p => p.map(prj => prj.id===prjId ? {...prj, subs:prj.subs.filter(s => s.id!==subId)} : prj));
+  };
+
+  const delRK = (subId, rk) => {
+    if (!window.confirm(`Regelkast "${rk}" verwijderen?`)) return;
+    setPrjs(p => p.map(prj => ({
+      ...prj, subs:prj.subs.map(s => s.id===subId ? {...s, rks:s.rks.filter(r => r!==rk)} : s)
+    })));
+  };
+
+  const csvPrjs = () => {
+    const rows = [];
+    prjs.forEach(p => {
+      p.subs.forEach(s => {
+        if (s.rks.length>0) s.rks.forEach(rk => rows.push([p.nr, p.naam, s.naam, rk]));
+        else rows.push([p.nr, p.naam, s.naam, '']);
+      });
+      if (p.subs.length===0) rows.push([p.nr, p.naam, '', '']);
+    });
+    downloadCSV('projecten.csv', ['Projectnummer','Projectnaam','Subproject','Regelkast'], rows);
+  };
+
   return React.createElement("div", { style:{ maxWidth:900 }},
     React.createElement(PH, { title:`Projecten (${prjs.length})`, action:
-      React.createElement("button", { onClick:()=>{ setAdding({type:"prj"}); setVal(""); setVal2(""); }, style:btn() }, "+ Nieuw project")
+      React.createElement(React.Fragment, null,
+        React.createElement(CsvBtn, { onClick:csvPrjs }),
+        React.createElement("button", { onClick:()=>{ setAdding({type:"prj"}); setVal(""); setVal2(""); }, style:btn() }, "+ Nieuw project")
+      )
     }),
     adding?.type==="prj" && React.createElement("div", { style:card({ border:`1px solid ${C.acc}50`, marginBottom:20 })},
       React.createElement(SH, { t:"Nieuw project" }),
@@ -314,23 +384,55 @@ function PrjPage({ prjs, setPrjs }) {
       )
     ),
     prjs.map(prj => React.createElement("div", { key:prj.id, style:card() },
-      React.createElement("div", { onClick:()=>toggle(prj.id), style:{ display:"flex", alignItems:"center", gap:12, cursor:"pointer", paddingBottom:exp[prj.id]?14:0, marginBottom:exp[prj.id]?14:0, borderBottom:exp[prj.id]?`1px solid ${C.bdr}`:"none" }},
-        React.createElement("span", { style:{ color:C.acc, fontFamily:"monospace", fontSize:12 }}, exp[prj.id]?"▾":"▸"),
-        React.createElement("span", { style:{ fontFamily:"monospace", fontWeight:800, color:C.acc, fontSize:13 }}, prj.nr),
-        React.createElement("span", { style:{ fontWeight:600 }}, prj.naam),
-        React.createElement("span", { style:{ marginLeft:"auto", background:C.sur2, color:C.mut, border:`1px solid ${C.bdr}`, borderRadius:4, padding:"1px 7px", fontSize:11, fontFamily:"monospace" }},
-          `${prj.subs.length} subproject${prj.subs.length!==1?"en":""}`)
-      ),
+      /* Project header – edit mode or normal */
+      editPrj?.id===prj.id
+        ? React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr auto", gap:10, alignItems:"end", marginBottom:14 }},
+            React.createElement(FI, { label:"Projectnummer *", value:editPrj.nr,   onChange:e=>setEditPrj(p=>({...p,nr:e.target.value})),   placeholder:"PRJ-..." }),
+            React.createElement(FI, { label:"Projectnaam",     value:editPrj.naam, onChange:e=>setEditPrj(p=>({...p,naam:e.target.value})), placeholder:"Naam" }),
+            React.createElement("div", { style:{ paddingTop:18, display:"flex", gap:6 }},
+              React.createElement("button", { onClick:saveEditPrj, style:{...btn(), padding:"7px 12px"} }, "✓"),
+              React.createElement("button", { onClick:()=>setEditPrj(null), style:{...btn(C.mut,false), padding:"7px 12px"} }, "✕")
+            )
+          )
+        : React.createElement("div", { style:{ display:"flex", alignItems:"center", gap:12, paddingBottom:exp[prj.id]?14:0, marginBottom:exp[prj.id]?14:0, borderBottom:exp[prj.id]?`1px solid ${C.bdr}`:"none" }},
+            React.createElement("span", { onClick:()=>toggle(prj.id), style:{ color:C.acc, fontFamily:"monospace", fontSize:12, cursor:"pointer", userSelect:"none" }}, exp[prj.id]?"▾":"▸"),
+            React.createElement("div", { onClick:()=>toggle(prj.id), style:{ display:"flex", alignItems:"center", gap:10, flex:1, cursor:"pointer" }},
+              React.createElement("span", { style:{ fontFamily:"monospace", fontWeight:800, color:C.acc, fontSize:13 }}, prj.nr),
+              React.createElement("span", { style:{ fontWeight:600 }}, prj.naam),
+              React.createElement("span", { style:{ marginLeft:8, background:C.sur2, color:C.mut, border:`1px solid ${C.bdr}`, borderRadius:4, padding:"1px 7px", fontSize:11, fontFamily:"monospace" }},
+                `${prj.subs.length} subproject${prj.subs.length!==1?"en":""}`)
+            ),
+            React.createElement("div", { style:{ display:"flex", gap:5 }},
+              React.createElement("button", { onClick:()=>setEditPrj({id:prj.id, nr:prj.nr, naam:prj.naam}), style:ibtn(C.blue) }, "✏"),
+              React.createElement("button", { onClick:()=>delPrj(prj.id), style:ibtn(C.red) }, "🗑")
+            )
+          ),
       exp[prj.id] && React.createElement("div", null,
         prj.subs.map(sub => React.createElement("div", { key:sub.id, style:{ background:C.bg, border:`1px solid ${C.bdr}`, borderRadius:6, padding:"10px 14px", marginBottom:8 }},
-          React.createElement("div", { onClick:()=>toggle(sub.id), style:{ display:"flex", alignItems:"center", gap:10, cursor:"pointer" }},
-            React.createElement("span", { style:{ color:C.blue, fontSize:11 }}, exp[sub.id]?"▾":"▸"),
-            React.createElement("span", { style:{ fontWeight:600 }}, sub.naam),
-            React.createElement("span", { style:{ fontSize:11, color:C.mut }}, `${sub.rks.length} regelkast${sub.rks.length!==1?"en":""}`),
-            React.createElement("button", { onClick:e=>{ e.stopPropagation(); setAdding({type:"rk",prjId:prj.id,subId:sub.id}); setVal(""); }, style:{...btn(C.blue,false), padding:"2px 8px", fontSize:10, marginLeft:"auto"} }, "+ Regelkast")
-          ),
+          /* Sub header – edit mode or normal */
+          editSub?.subId===sub.id
+            ? React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr auto", gap:10, alignItems:"end", marginBottom:8 }},
+                React.createElement(FI, { label:"Subproject naam *", value:editSub.naam, onChange:e=>setEditSub(p=>({...p,naam:e.target.value})), placeholder:"Naam" }),
+                React.createElement("div", { style:{ paddingTop:18, display:"flex", gap:6 }},
+                  React.createElement("button", { onClick:saveEditSub, style:{...btn(), padding:"7px 12px"} }, "✓"),
+                  React.createElement("button", { onClick:()=>setEditSub(null), style:{...btn(C.mut,false), padding:"7px 12px"} }, "✕")
+                )
+              )
+            : React.createElement("div", { style:{ display:"flex", alignItems:"center", gap:10 }},
+                React.createElement("span", { onClick:()=>toggle(sub.id), style:{ color:C.blue, fontSize:11, cursor:"pointer", userSelect:"none" }}, exp[sub.id]?"▾":"▸"),
+                React.createElement("span", { onClick:()=>toggle(sub.id), style:{ fontWeight:600, cursor:"pointer", flex:1 }}, sub.naam),
+                React.createElement("span", { style:{ fontSize:11, color:C.mut }}, `${sub.rks.length} regelkast${sub.rks.length!==1?"en":""}`),
+                React.createElement("div", { style:{ display:"flex", gap:5, marginLeft:8 }},
+                  React.createElement("button", { onClick:e=>{ e.stopPropagation(); setAdding({type:"rk",prjId:prj.id,subId:sub.id}); setVal(""); }, style:ibtn(C.blue,{fontSize:10}) }, "+ RK"),
+                  React.createElement("button", { onClick:()=>setEditSub({prjId:prj.id, subId:sub.id, naam:sub.naam}), style:ibtn(C.blue,{fontSize:10}) }, "✏"),
+                  React.createElement("button", { onClick:()=>delSub(prj.id, sub.id), style:ibtn(C.red,{fontSize:10}) }, "🗑")
+                )
+              ),
           (exp[sub.id] || (adding?.type==="rk" && adding.subId===sub.id)) && React.createElement("div", { style:{ display:"flex", flexWrap:"wrap", gap:6, marginTop:10 }},
-            sub.rks.map(rk => React.createElement("span", { key:rk, style:{ background:"rgba(59,130,246,.12)", color:C.blue, border:"1px solid rgba(59,130,246,.25)", borderRadius:4, padding:"3px 10px", fontSize:12, fontFamily:"monospace", fontWeight:600 }}, rk)),
+            sub.rks.map(rk => React.createElement("div", { key:rk, style:{ display:"flex", alignItems:"center", gap:4, background:"rgba(59,130,246,.12)", border:"1px solid rgba(59,130,246,.25)", borderRadius:4, padding:"2px 6px 2px 10px" }},
+              React.createElement("span", { style:{ fontSize:12, fontFamily:"monospace", fontWeight:600, color:C.blue }}, rk),
+              React.createElement("button", { onClick:()=>delRK(sub.id, rk), style:{ background:"none", border:"none", color:"#ef444480", cursor:"pointer", fontSize:12, padding:"0 2px", lineHeight:1, fontWeight:700 }}, "×")
+            )),
             adding?.type==="rk" && adding.subId===sub.id && React.createElement("div", { style:{ display:"flex", gap:6, alignItems:"center" }},
               React.createElement("input", { style:inp({width:110}), placeholder:"RK-xxx", value:val, onChange:e=>setVal(e.target.value), onKeyDown:e=>e.key==="Enter"&&doAdd(), autoFocus:true }),
               React.createElement("button", { onClick:doAdd, style:{...btn(), padding:"4px 10px",fontSize:11} }, "✓"),
@@ -370,29 +472,69 @@ const NEXT_FIELDS = {
   ],
 };
 
+function ArtTable({ arts, onDel }) {
+  if (!arts.length) return null;
+  return React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse", marginBottom:14 }},
+    React.createElement("thead", null,
+      React.createElement("tr", { style:{ borderBottom:`1px solid ${C.bdr}` }},
+        ["Merk","Type","Aantal","Opmerking",""].map(h =>
+          React.createElement("th", { key:h, style:{ textAlign:"left", padding:"5px 10px", fontSize:10, color:C.mut, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em" }}, h)
+        )
+      )
+    ),
+    React.createElement("tbody", null,
+      arts.map((a,i) => React.createElement("tr", { key:a.id, style:{ borderBottom:`1px solid ${C.sur2}` }},
+        React.createElement("td", { style:{ padding:"7px 10px", fontFamily:"monospace", fontWeight:600 }}, a.merk),
+        React.createElement("td", { style:{ padding:"7px 10px", fontFamily:"monospace" }}, a.type),
+        React.createElement("td", { style:{ padding:"7px 10px", fontFamily:"monospace", textAlign:"center" }}, a.n),
+        React.createElement("td", { style:{ padding:"7px 10px", color:"#94a3b8", fontSize:12 }}, a.opm||"—"),
+        onDel && React.createElement("td", { style:{ padding:"7px 10px", textAlign:"right" }},
+          React.createElement("button", { onClick:()=>onDel(i), style:{...ibtn(C.red), padding:"2px 8px"} }, "✕")
+        )
+      ))
+    )
+  );
+}
+
+function ArtAddRow({ art, setArt, onAdd }) {
+  return React.createElement("div", { style:{ background:C.bg, border:`1px dashed ${C.bdr}`, borderRadius:6, padding:14 }},
+    React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 60px 1fr auto", gap:10, alignItems:"end" }},
+      React.createElement(FI, { label:"Merk *",    value:art.merk, onChange:e=>setArt(p=>({...p,merk:e.target.value})), placeholder:"Belimo" }),
+      React.createElement(FI, { label:"Type *",    value:art.type, onChange:e=>setArt(p=>({...p,type:e.target.value})), placeholder:"EV015" }),
+      React.createElement(FI, { label:"Aantal",    type:"number", min:"1", value:art.n, onChange:e=>setArt(p=>({...p,n:e.target.value})) }),
+      React.createElement(FI, { label:"Opmerking", value:art.opm,  onChange:e=>setArt(p=>({...p,opm:e.target.value})),  placeholder:"Optioneel" }),
+      React.createElement("div", { style:{paddingTop:18} }, React.createElement("button", { onClick:onAdd, style:btn() }, "+ Toevoegen"))
+    )
+  );
+}
+
 function BestPage({ levs, prjs, bests, setBests, allRK }) {
-  const [exp,      setExp]      = useState("b1");
-  const [wizard,   setWizard]   = useState(null);
-  const [nextForm, setNextForm] = useState({});
-  const [newMode,  setNewMode]  = useState(false);
-  const [newBest,  setNewBest]  = useState(null);
-  const [newArt,   setNewArt]   = useState({ merk:"", type:"", n:1, opm:"" });
-  const [tempArts, setTempArts] = useState([]);
+  const [exp,       setExp]       = useState("b1");
+  const [wizard,    setWizard]    = useState(null);
+  const [nextForm,  setNextForm]  = useState({});
+  const [newMode,   setNewMode]   = useState(false);
+  const [newBest,   setNewBest]   = useState(null);
+  const [newArt,    setNewArt]    = useState({ merk:"", type:"", n:1, opm:"" });
+  const [tempArts,  setTempArts]  = useState([]);
+  const [editMode,  setEditMode]  = useState(false);
+  const [editBest,  setEditBest]  = useState(null);
+  const [editArts,  setEditArts]  = useState([]);
+  const [editNewArt,setEditNewArt]= useState({ merk:"", type:"", n:1, opm:"" });
 
   const levOpts = [{ v:"", l:"— Kies leverancier —" }, ...levs.map(l => ({ v:l.id, l:l.naam }))];
   const prjOpts = [{ v:"", l:"— Kies project —" },     ...prjs.map(p => ({ v:p.id, l:`${p.nr} — ${p.naam}` }))];
   const subOpts = prjId => {
     const prj = prjs.find(p => p.id===prjId);
-    return prj ? [{ v:"", l:"— Kies subproject —" }, ...prj.subs.map(s => ({v:s.id, l:s.naam}))]
+    return prj ? [{ v:"", l:"— Kies subproject —" }, ...prj.subs.map(s=>({v:s.id,l:s.naam}))]
                : [{ v:"", l:"— Kies eerst project —" }];
   };
 
   const doNext = bestId => {
     const b = bests.find(x => x.id===bestId);
     const idx = STEPS.indexOf(b.status);
-    const ns = STEPS[idx+1];
+    const ns  = STEPS[idx+1];
     if (!ns) return;
-    setBests(p => p.map(x => x.id===bestId ? {...x, ...nextForm, status:ns} : x));
+    setBests(p => p.map(x => x.id===bestId ? {...x,...nextForm,status:ns} : x));
     setWizard(null); setNextForm({});
   };
 
@@ -402,160 +544,196 @@ function BestPage({ levs, prjs, bests, setBests, allRK }) {
   };
 
   const saveNew = () => {
-    if (!newBest?.levId || !newBest?.prjId || tempArts.length===0) return;
-    const b = {
-      id:`b-${Date.now()}`, ...newBest,
-      status: newBest.heeftOff ? "offerte" : "bestelling",
+    if (!newBest?.levId||!newBest?.prjId||tempArts.length===0) return;
+    const b = { id:`b-${Date.now()}`, ...newBest,
+      status:newBest.heeftOff?"offerte":"bestelling",
       obNr:"", levBestNr:"", verwLev:"", pbNr:"", levDat:"",
-      arts: tempArts,
-    };
+      arts:tempArts };
     setBests(p => [b,...p]);
     setNewMode(false); setNewBest(null); setTempArts([]);
   };
 
-  const addArt = () => {
-    if (!newArt.merk||!newArt.type) return;
-    setTempArts(p => [...p, {id:`na-${Date.now()}`, ...newArt, n:Number(newArt.n)}]);
-    setNewArt({ merk:"", type:"", n:1, opm:"" });
+  const startEdit = b => {
+    setEditBest({...b});
+    setEditArts(b.arts.map(a=>({...a})));
+    setEditNewArt({ merk:"", type:"", n:1, opm:"" });
+    setEditMode(true);
   };
 
-  const getLev = id => levs.find(l => l.id===id);
-  const getPrj = id => prjs.find(p => p.id===id);
-  const getSub = (prjId, subId) => prjs.find(p => p.id===prjId)?.subs.find(s => s.id===subId);
+  const saveEdit = () => {
+    if (!editBest?.levId||!editBest?.prjId||editArts.length===0) return;
+    setBests(p => p.map(b => b.id===editBest.id ? {...editBest, arts:editArts} : b));
+    setEditMode(false); setEditBest(null); setEditArts([]);
+  };
+
+  const addEditArt = () => {
+    if (!editNewArt.merk||!editNewArt.type) return;
+    setEditArts(p => [...p, {id:`na-${Date.now()}`, ...editNewArt, n:Number(editNewArt.n)}]);
+    setEditNewArt({ merk:"", type:"", n:1, opm:"" });
+  };
+
+  const deleteBest = id => {
+    if (!window.confirm('Bestelling verwijderen?')) return;
+    setBests(p => p.filter(b => b.id!==id));
+  };
+
+  const csvBests = () => {
+    const rows = [];
+    bests.forEach(b => {
+      const lev = levs.find(l=>l.id===b.levId);
+      const prj = prjs.find(p=>p.id===b.prjId);
+      const sub = prjs.find(p=>p.id===b.prjId)?.subs.find(s=>s.id===b.subId);
+      (b.arts.length>0 ? b.arts : [{}]).forEach(a => {
+        rows.push([
+          b.status, lev?.naam||'', prj?.nr||'', sub?.naam||'',
+          b.offNr||'', b.offDat||'', b.ioNr||'', b.bestDat||'',
+          b.obNr||'', b.levBestNr||'', b.verwLev||'', b.pbNr||'', b.levDat||'',
+          a.merk||'', a.type||'', a.n||'', a.opm||''
+        ]);
+      });
+    });
+    downloadCSV('bestellingen.csv',
+      ['Status','Leverancier','Project','Subproject','Offertenr','Offertedatum','IO Nr','Besteldatum','OB Nr','Lev.bestelnr','Verw.levering','Pakbonnr','Leverdatum','Merk','Type','Aantal','Opmerking'],
+      rows
+    );
+  };
+
+  const getLev = id => levs.find(l=>l.id===id);
+  const getPrj = id => prjs.find(p=>p.id===id);
+  const getSub = (prjId,subId) => prjs.find(p=>p.id===prjId)?.subs.find(s=>s.id===subId);
 
   const sorted = [...bests].sort((a,b) => {
-    const order = { geleverd:0, bevestigd:1, bestelling:2, offerte:3 };
-    return (order[a.status]??9) - (order[b.status]??9);
+    const order={geleverd:0,bevestigd:1,bestelling:2,offerte:3};
+    return (order[a.status]??9)-(order[b.status]??9);
   });
 
-  // ── Nieuwe bestelling wizard ──
-  if (newMode && newBest) return React.createElement("div", { style:{ maxWidth:960 }},
-    React.createElement("div", { style:{ display:"flex", alignItems:"center", gap:12, marginBottom:20 }},
-      React.createElement("button", { onClick:()=>{ setNewMode(false); setNewBest(null); setTempArts([]); }, style:btn(C.mut,false) }, "← Terug"),
-      React.createElement("div", { style:{ fontFamily:"monospace", fontWeight:800, color:C.acc, fontSize:13 }},
-        newBest.heeftOff ? "Nieuwe offerte" : "Nieuwe bestelling")
-    ),
-    React.createElement("div", { style:card() },
-      React.createElement(SH, { t:"Gegevens" }),
-      React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:14, marginBottom:14 }},
-        React.createElement(FS, { label:"Leverancier *", opts:levOpts, value:newBest.levId, onChange:e=>setNewBest(p=>({...p,levId:e.target.value})) }),
-        React.createElement(FS, { label:"Project *",     opts:prjOpts, value:newBest.prjId, onChange:e=>setNewBest(p=>({...p,prjId:e.target.value,subId:""})) }),
-        React.createElement(FS, { label:"Subproject",    opts:subOpts(newBest.prjId), value:newBest.subId, onChange:e=>setNewBest(p=>({...p,subId:e.target.value})) })
+  /* ── WIZARD helper ── */
+  const WizardForm = ({ mode, best, setBest, arts, setArts, newArtS, setNewArtS, onSave, onCancel }) =>
+    React.createElement("div", { style:{ maxWidth:960 }},
+      React.createElement("div", { style:{ display:"flex", alignItems:"center", gap:12, marginBottom:20 }},
+        React.createElement("button", { onClick:onCancel, style:btn(C.mut,false) }, "← Terug"),
+        React.createElement("div", { style:{ fontFamily:"monospace", fontWeight:800, color:C.acc, fontSize:13 }},
+          mode==="edit" ? `Bestelling bewerken` : best.heeftOff ? "Nieuwe offerte" : "Nieuwe bestelling")
       ),
-      newBest.heeftOff
-        ? React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }},
-            React.createElement(FI, { label:"Offertenummer", value:newBest.offNr,  onChange:e=>setNewBest(p=>({...p,offNr:e.target.value})),  placeholder:"OFF-2024-..." }),
-            React.createElement(FI, { label:"Offertedatum",  type:"date", value:newBest.offDat, onChange:e=>setNewBest(p=>({...p,offDat:e.target.value})) })
-          )
-        : React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }},
-            React.createElement(FI, { label:"IO Nummer *",  value:newBest.ioNr,   onChange:e=>setNewBest(p=>({...p,ioNr:e.target.value})),   placeholder:"IO-2024-..." }),
-            React.createElement(FI, { label:"Besteldatum",  type:"date", value:newBest.bestDat, onChange:e=>setNewBest(p=>({...p,bestDat:e.target.value})) })
-          )
-    ),
-    React.createElement("div", { style:card() },
-      React.createElement(SH, { t:"Artikelen" }),
-      tempArts.length > 0 && React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse", marginBottom:16 }},
-        React.createElement("thead", null,
-          React.createElement("tr", { style:{ borderBottom:`1px solid ${C.bdr}` }},
-            ["Merk","Type","Aantal","Opmerking",""].map(h => React.createElement("th", { key:h, style:{ textAlign:"left", padding:"5px 10px", fontSize:10, color:C.mut, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em" }}, h))
+      React.createElement("div", { style:card() },
+        React.createElement(SH, { t:"Gegevens" }),
+        React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:14, marginBottom:14 }},
+          React.createElement(FS, { label:"Leverancier *", opts:levOpts, value:best.levId, onChange:e=>setBest(p=>({...p,levId:e.target.value})) }),
+          React.createElement(FS, { label:"Project *",     opts:prjOpts, value:best.prjId, onChange:e=>setBest(p=>({...p,prjId:e.target.value,subId:""})) }),
+          React.createElement(FS, { label:"Subproject",    opts:subOpts(best.prjId), value:best.subId, onChange:e=>setBest(p=>({...p,subId:e.target.value})) })
+        ),
+        React.createElement("div", { style:{ marginBottom:10 }},
+          React.createElement("label", { style:{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontSize:13 }},
+            React.createElement("input", { type:"checkbox", checked:best.heeftOff, onChange:e=>setBest(p=>({...p,heeftOff:e.target.checked})), style:{ accentColor:C.acc, width:14, height:14 }}),
+            React.createElement("span", { style:{ color:C.mut }}, "Heeft offerte")
           )
         ),
-        React.createElement("tbody", null,
-          tempArts.map((a,i) => React.createElement("tr", { key:a.id, style:{ borderBottom:`1px solid ${C.sur2}` }},
-            React.createElement("td", { style:{ padding:"7px 10px", fontFamily:"monospace", fontWeight:600 }}, a.merk),
-            React.createElement("td", { style:{ padding:"7px 10px", fontFamily:"monospace" }}, a.type),
-            React.createElement("td", { style:{ padding:"7px 10px", fontFamily:"monospace", textAlign:"center" }}, a.n),
-            React.createElement("td", { style:{ padding:"7px 10px", color:"#94a3b8", fontSize:12 }}, a.opm||"—"),
-            React.createElement("td", { style:{ padding:"7px 10px", textAlign:"right" }},
-              React.createElement("button", { onClick:()=>setTempArts(p=>p.filter((_,j)=>j!==i)), style:{...btn(C.red,false),padding:"2px 8px",fontSize:11} }, "✕")
-            )
-          ))
+        best.heeftOff && React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }},
+          React.createElement(FI, { label:"Offertenummer", value:best.offNr,  onChange:e=>setBest(p=>({...p,offNr:e.target.value})),  placeholder:"OFF-2024-..." }),
+          React.createElement(FI, { label:"Offertedatum",  type:"date", value:best.offDat, onChange:e=>setBest(p=>({...p,offDat:e.target.value})) })
+        ),
+        React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }},
+          React.createElement(FI, { label:"IO Nummer",  value:best.ioNr,   onChange:e=>setBest(p=>({...p,ioNr:e.target.value})),   placeholder:"IO-2024-..." }),
+          React.createElement(FI, { label:"Besteldatum", type:"date", value:best.bestDat, onChange:e=>setBest(p=>({...p,bestDat:e.target.value})) })
+        ),
+        React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:14, marginBottom:14 }},
+          React.createElement(FI, { label:"Orderbevestigingsnr.", value:best.obNr,      onChange:e=>setBest(p=>({...p,obNr:e.target.value})),      placeholder:"OB-..." }),
+          React.createElement(FI, { label:"Bestelnr. leverancier",value:best.levBestNr, onChange:e=>setBest(p=>({...p,levBestNr:e.target.value})), placeholder:"BES-..." }),
+          React.createElement(FI, { label:"Verwachte leverdatum", type:"date", value:best.verwLev, onChange:e=>setBest(p=>({...p,verwLev:e.target.value})) })
+        ),
+        React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }},
+          React.createElement(FI, { label:"Pakbonnummer", value:best.pbNr,  onChange:e=>setBest(p=>({...p,pbNr:e.target.value})),  placeholder:"PB-..." }),
+          React.createElement(FI, { label:"Leverdatum",   type:"date", value:best.levDat, onChange:e=>setBest(p=>({...p,levDat:e.target.value})) })
         )
       ),
-      React.createElement("div", { style:{ background:C.bg, border:`1px dashed ${C.bdr}`, borderRadius:6, padding:14 }},
-        React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 60px 1fr auto", gap:10, alignItems:"end" }},
-          React.createElement(FI, { label:"Merk *",    value:newArt.merk, onChange:e=>setNewArt(p=>({...p,merk:e.target.value})), placeholder:"Belimo" }),
-          React.createElement(FI, { label:"Type *",    value:newArt.type, onChange:e=>setNewArt(p=>({...p,type:e.target.value})), placeholder:"EV015" }),
-          React.createElement(FI, { label:"Aantal",    type:"number", min:"1", value:newArt.n, onChange:e=>setNewArt(p=>({...p,n:e.target.value})) }),
-          React.createElement(FI, { label:"Opmerking", value:newArt.opm,  onChange:e=>setNewArt(p=>({...p,opm:e.target.value})),  placeholder:"Optioneel" }),
-          React.createElement("div", { style:{paddingTop:18} }, React.createElement("button", { onClick:addArt, style:btn() }, "+ Toevoegen"))
-        )
+      React.createElement("div", { style:card() },
+        React.createElement(SH, { t:"Artikelen" }),
+        React.createElement(ArtTable, { arts, onDel:i=>setArts(p=>p.filter((_,j)=>j!==i)) }),
+        React.createElement(ArtAddRow, { art:newArtS, setArt:setNewArtS, onAdd:()=>{
+          if (!newArtS.merk||!newArtS.type) return;
+          setArts(p=>[...p,{id:`na-${Date.now()}`, ...newArtS, n:Number(newArtS.n)}]);
+          setNewArtS({ merk:"", type:"", n:1, opm:"" });
+        }})
+      ),
+      React.createElement("div", { style:{ display:"flex", gap:8 }},
+        React.createElement("button", { onClick:onSave, disabled:!best.levId||!best.prjId||arts.length===0,
+          style:{...btn(), opacity:(!best.levId||!best.prjId||arts.length===0)?0.4:1} },
+          `✓ Opslaan (${arts.length} artikel${arts.length!==1?"en":""})`),
+        React.createElement("button", { onClick:onCancel, style:btn(C.mut,false) }, "Annuleren")
       )
-    ),
-    React.createElement("div", { style:{ display:"flex", gap:8 }},
-      React.createElement("button", { onClick:saveNew, disabled:!newBest.levId||!newBest.prjId||tempArts.length===0, style:{...btn(), opacity:(!newBest.levId||!newBest.prjId||tempArts.length===0)?0.4:1} },
-        `✓ Opslaan (${tempArts.length} artikel${tempArts.length!==1?"en":""})`),
-      React.createElement("button", { onClick:()=>{setNewMode(false);setNewBest(null);setTempArts([]);}, style:btn(C.mut,false) }, "Annuleren")
-    )
-  );
+    );
 
-  // ── Bestellingen lijst ──
+  if (newMode && newBest) return React.createElement(WizardForm, {
+    mode:"new", best:newBest, setBest:setNewBest, arts:tempArts, setArts:setTempArts,
+    newArtS:newArt, setNewArtS:setNewArt, onSave:saveNew,
+    onCancel:()=>{setNewMode(false);setNewBest(null);setTempArts([]);}
+  });
+
+  if (editMode && editBest) return React.createElement(WizardForm, {
+    mode:"edit", best:editBest, setBest:setEditBest, arts:editArts, setArts:setEditArts,
+    newArtS:editNewArt, setNewArtS:setEditNewArt, onSave:saveEdit,
+    onCancel:()=>{setEditMode(false);setEditBest(null);setEditArts([]);}
+  });
+
   return React.createElement("div", { style:{ maxWidth:1000 }},
-    React.createElement(PH, { title:`Bestellingen (${bests.length})`, action: React.createElement(React.Fragment, null,
-      React.createElement("button", { onClick:()=>startNew(false), style:btn() }, "+ Nieuwe bestelling"),
-      React.createElement("button", { onClick:()=>startNew(true),  style:btn(C.blue,false) }, "+ Vanaf offerte")
-    )}),
+    React.createElement(PH, { title:`Bestellingen (${bests.length})`, action:
+      React.createElement(React.Fragment, null,
+        React.createElement(CsvBtn, { onClick:csvBests }),
+        React.createElement("button", { onClick:()=>startNew(false), style:btn() }, "+ Nieuwe bestelling"),
+        React.createElement("button", { onClick:()=>startNew(true),  style:btn(C.blue,false) }, "+ Vanaf offerte")
+      )
+    }),
     sorted.map(b => {
-      const lev   = getLev(b.levId);
-      const prj   = getPrj(b.prjId);
-      const sub   = getSub(b.prjId, b.subId);
-      const isOpen = exp===b.id;
-      const idx   = STEPS.indexOf(b.status);
-      const ns    = STEPS[idx+1];
-      const isWiz = wizard?.bestId===b.id;
+      const lev=getLev(b.levId), prj=getPrj(b.prjId), sub=getSub(b.prjId,b.subId);
+      const isOpen=exp===b.id;
+      const idx=STEPS.indexOf(b.status);
+      const ns=STEPS[idx+1];
+      const isWiz=wizard?.bestId===b.id;
 
       return React.createElement("div", { key:b.id, style:card() },
-        React.createElement("div", { onClick:()=>setExp(isOpen?null:b.id), style:{ display:"flex", alignItems:"center", gap:10, cursor:"pointer", paddingBottom:isOpen?14:0, marginBottom:isOpen?14:0, borderBottom:isOpen?`1px solid ${C.bdr}`:"none" }},
-          React.createElement("span", { style:{ color:C.acc, fontSize:11 }}, isOpen?"▾":"▸"),
-          React.createElement(Bdg, { v:b.status }),
-          b.ioNr  && React.createElement("span", { style:{ fontFamily:"monospace", fontWeight:800, color:C.acc, fontSize:13 }}, b.ioNr),
-          !b.ioNr && b.offNr && React.createElement("span", { style:{ fontFamily:"monospace", fontWeight:700, color:"#a855f7", fontSize:13 }}, b.offNr),
-          lev && React.createElement("span", { style:{ fontSize:13 }}, lev.naam),
-          prj && React.createElement("span", { style:{ background:"rgba(59,130,246,.1)", color:C.blue, border:"1px solid rgba(59,130,246,.2)", borderRadius:4, fontSize:11, fontWeight:700, padding:"2px 8px", fontFamily:"monospace" }}, prj.nr),
-          sub && React.createElement("span", { style:{ fontSize:12, color:C.mut }}, sub.naam),
-          React.createElement("span", { style:{ marginLeft:"auto", fontSize:11, color:C.mut }}, `${b.arts.length} art.`)
+        React.createElement("div", { style:{ display:"flex", alignItems:"center", gap:10, paddingBottom:isOpen?14:0, marginBottom:isOpen?14:0, borderBottom:isOpen?`1px solid ${C.bdr}`:"none" }},
+          React.createElement("span", { onClick:()=>setExp(isOpen?null:b.id), style:{ color:C.acc, fontSize:11, cursor:"pointer", userSelect:"none" }}, isOpen?"▾":"▸"),
+          React.createElement("div", { onClick:()=>setExp(isOpen?null:b.id), style:{ display:"flex", alignItems:"center", gap:10, flex:1, cursor:"pointer", overflow:"hidden" }},
+            React.createElement(Bdg, { v:b.status }),
+            b.ioNr  && React.createElement("span", { style:{ fontFamily:"monospace", fontWeight:800, color:C.acc, fontSize:13 }}, b.ioNr),
+            !b.ioNr&&b.offNr && React.createElement("span", { style:{ fontFamily:"monospace", fontWeight:700, color:"#a855f7", fontSize:13 }}, b.offNr),
+            lev&&React.createElement("span", { style:{ fontSize:13 }}, lev.naam),
+            prj&&React.createElement("span", { style:{ background:"rgba(59,130,246,.1)", color:C.blue, border:"1px solid rgba(59,130,246,.2)", borderRadius:4, fontSize:11, fontWeight:700, padding:"2px 8px", fontFamily:"monospace" }}, prj.nr),
+            sub&&React.createElement("span", { style:{ fontSize:12, color:C.mut }}, sub.naam),
+            React.createElement("span", { style:{ fontSize:11, color:C.mut, marginLeft:"auto" }}, `${b.arts.length} art.`)
+          ),
+          React.createElement("div", { style:{ display:"flex", gap:5, flexShrink:0 }},
+            React.createElement("button", { onClick:()=>startEdit(b), style:ibtn(C.blue) }, "✏"),
+            React.createElement("button", { onClick:()=>deleteBest(b.id), style:ibtn(C.red) }, "🗑")
+          )
         ),
         isOpen && React.createElement(React.Fragment, null,
           React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:16 }},
             [
-              b.heeftOff && b.offNr    && { l:"Offerte",          v:`${b.offNr} (${b.offDat})`,    c:"#a855f7" },
-              b.ioNr                   && { l:"IO Nummer",         v:b.ioNr,                        c:C.acc },
-              b.bestDat && b.ioNr      && { l:"Besteldatum",       v:b.bestDat },
-              b.obNr                   && { l:"Orderbevestiging",   v:b.obNr },
-              b.levBestNr              && { l:"Bestelnr. lev.",     v:b.levBestNr },
-              b.verwLev                && { l:"Verwachte levering", v:b.verwLev },
-              b.pbNr                   && { l:"Pakbon",             v:b.pbNr,    c:C.grn },
-              b.levDat                 && { l:"Geleverd op",        v:b.levDat },
+              b.heeftOff&&b.offNr    && { l:"Offerte",          v:`${b.offNr} (${b.offDat})`, c:"#a855f7" },
+              b.ioNr                 && { l:"IO Nummer",         v:b.ioNr,                     c:C.acc },
+              b.bestDat&&b.ioNr      && { l:"Besteldatum",       v:b.bestDat },
+              b.obNr                 && { l:"Orderbevestiging",   v:b.obNr },
+              b.levBestNr            && { l:"Bestelnr. lev.",     v:b.levBestNr },
+              b.verwLev              && { l:"Verwachte levering", v:b.verwLev },
+              b.pbNr                 && { l:"Pakbon",             v:b.pbNr, c:C.grn },
+              b.levDat               && { l:"Geleverd op",        v:b.levDat },
             ].filter(Boolean).map((x,i) => React.createElement(InfoChip, { key:i, label:x.l, value:x.v, color:x.c }))
           ),
-          React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse", marginBottom:16 }},
-            React.createElement("thead", null,
-              React.createElement("tr", { style:{ borderBottom:`1px solid ${C.bdr}` }},
-                ["Merk","Type","Aantal","Opmerking"].map(h => React.createElement("th", { key:h, style:{ textAlign:"left", padding:"5px 10px", fontSize:10, color:C.mut, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em" }}, h))
-              )
-            ),
-            React.createElement("tbody", null,
-              b.arts.map((a,i) => React.createElement("tr", { key:a.id, style:{ borderBottom:`1px solid ${C.sur2}`, background:i%2?"rgba(255,255,255,.01)":"transparent" }},
-                React.createElement("td", { style:{ padding:"7px 10px", fontFamily:"monospace", fontWeight:600 }}, a.merk),
-                React.createElement("td", { style:{ padding:"7px 10px", fontFamily:"monospace" }}, a.type),
-                React.createElement("td", { style:{ padding:"7px 10px", fontFamily:"monospace", textAlign:"center" }}, a.n),
-                React.createElement("td", { style:{ padding:"7px 10px", color:"#94a3b8", fontSize:12 }}, a.opm||"—")
-              ))
-            )
-          ),
+          React.createElement(ArtTable, { arts:b.arts }),
           React.createElement("div", { style:{ display:"flex", gap:8, alignItems:"center", marginBottom:isWiz?16:0 }},
             STEPS.map((st,i) => {
-              const done = STEPS.indexOf(b.status) >= i;
+              const done=STEPS.indexOf(b.status)>=i;
               return React.createElement("div", { key:st, style:{ display:"flex", alignItems:"center", gap:6 }},
                 React.createElement("div", { style:{ width:8, height:8, borderRadius:"50%", background:done?ST[st].c:C.bdr, boxShadow:done?`0 0 6px ${ST[st].c}`:"none" }}),
                 React.createElement("span", { style:{ fontSize:11, color:done?ST[st].c:C.mut, fontWeight:done?600:400 }}, ST[st].l),
-                i < STEPS.length-1 && React.createElement("span", { style:{ color:C.bdr, margin:"0 2px" }}, "→")
+                i<STEPS.length-1&&React.createElement("span", { style:{ color:C.bdr, margin:"0 2px" }}, "→")
               );
             })
           ),
-          ns && !isWiz && React.createElement("button", { onClick:()=>{setWizard({bestId:b.id});setNextForm({});}, style:{...btn(), marginTop:12} },
+          ns&&!isWiz&&React.createElement("button", { onClick:()=>{setWizard({bestId:b.id});setNextForm({});}, style:{...btn(), marginTop:12} },
             `→ Zet door naar ${ST[ns]?.l}`),
-          isWiz && React.createElement("div", { style:{ background:C.bg, border:`1px solid ${C.acc}50`, borderRadius:6, padding:16, marginTop:8 }},
+          isWiz&&React.createElement("div", { style:{ background:C.bg, border:`1px solid ${C.acc}50`, borderRadius:6, padding:16, marginTop:8 }},
             React.createElement("div", { style:{ fontSize:11, color:C.acc, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", marginBottom:14 }},
               `Status wijzigen → ${ST[ns]?.l}`),
             React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:14 }},
@@ -576,7 +754,9 @@ function BestPage({ levs, prjs, bests, setBests, allRK }) {
    PAGINA: ASSETCODERING
 ═══════════════════════════════════════════════════════════════ */
 function AssetPage({ assets, setAssets, allRK, availArts, lastRK, setLastRK }) {
-  const [addForm, setAddForm] = useState({ opcode:"", artId:"" });
+  const [addForm,     setAddForm]     = useState({ opcode:"", artId:"" });
+  const [editAssetId, setEditAssetId] = useState(null);
+  const [editOpc,     setEditOpc]     = useState("");
 
   const rkOpts  = [{ v:"", l:"— Kies regelkast —" }, ...allRK];
   const artOpts = [
@@ -598,8 +778,29 @@ function AssetPage({ assets, setAssets, allRK, availArts, lastRK, setLastRK }) {
     setAddForm({ opcode:"", artId:"" });
   };
 
+  const startEditAsset = a => {
+    setEditAssetId(a.id);
+    setEditOpc(a.opcode);
+  };
+
+  const saveEditAsset = () => {
+    if (!editOpc) return;
+    setAssets(p => p.map(a => a.id===editAssetId ? {...a, opcode:editOpc.toUpperCase()} : a));
+    setEditAssetId(null);
+  };
+
+  const delAsset = id => {
+    if (!window.confirm('Asset verwijderen?')) return;
+    setAssets(p => p.filter(a => a.id!==id));
+  };
+
+  const csvAssets = () => downloadCSV('assets.csv',
+    ['Regelkast','Opnemercode','Merk','Type','Status','Uitgiftedatum','Aan wie','Firma'],
+    assets.map(a => [a.rk, a.opcode, a.merk, a.type, a.st, a.uitDat||'', a.aan||'', a.firma||''])
+  );
+
   return React.createElement("div", { style:{ maxWidth:960 }},
-    React.createElement(SH, { t:"Assetcodering" }),
+    React.createElement(PH, { title:"Assetcodering", action: React.createElement(CsvBtn, { onClick:csvAssets }) }),
     React.createElement("div", { style:card({ border:`1px solid ${C.acc}40` }) },
       React.createElement("div", { style:{ fontSize:11, color:C.acc, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", marginBottom:14 }}, "Nieuwe codering aanmaken"),
       React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr auto", gap:12, alignItems:"end" }},
@@ -609,7 +810,7 @@ function AssetPage({ assets, setAssets, allRK, availArts, lastRK, setLastRK }) {
         React.createElement("div", { style:{paddingTop:18} }, React.createElement("button", { onClick:addAsset, style:btn() }, "+ Toevoegen"))
       )
     ),
-    availArts.length > 0 && React.createElement("div", { style:card() },
+    availArts.length>0 && React.createElement("div", { style:card() },
       React.createElement(SH, { t:"Beschikbare voorraad (niet volledig gecodeerd)" }),
       React.createElement("div", { style:{ display:"flex", flexWrap:"wrap", gap:8 }},
         availArts.map(a => React.createElement("div", { key:a.id, style:{ background:C.bg, border:`1px solid ${C.bdr}`, borderRadius:6, padding:"8px 12px", minWidth:180 }},
@@ -628,22 +829,43 @@ function AssetPage({ assets, setAssets, allRK, availArts, lastRK, setLastRK }) {
       React.createElement("span", { style:{ color:C.acc, fontSize:12 }}, "⚠ Geen geleverde bestellingen met beschikbare artikelen. Zet een bestelling op \"Geleverd\" om hier artikelen te kunnen coderen.")
     ),
     React.createElement("div", { style:card() },
-      React.createElement(SH, { t:`Assets — ${lastRK || "geen regelkast gekozen"} (${rkAssets.length})` }),
+      React.createElement(SH, { t:`Assets — ${lastRK||"geen regelkast gekozen"} (${rkAssets.length})` }),
       rkAssets.length===0
         ? React.createElement("div", { style:{ color:C.mut, fontSize:13, padding:8 }}, "Nog geen assets voor deze regelkast.")
         : React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse" }},
             React.createElement("thead", null,
               React.createElement("tr", { style:{ borderBottom:`1px solid ${C.bdr}` }},
-                ["Opnemercode","Merk","Type","Status"].map(h => React.createElement("th", { key:h, style:{ textAlign:"left", padding:"6px 10px", fontSize:10, color:C.mut, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em" }}, h))
+                ["Opnemercode","Merk","Type","Status",""].map(h =>
+                  React.createElement("th", { key:h, style:{ textAlign:"left", padding:"6px 10px", fontSize:10, color:C.mut, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em" }}, h)
+                )
               )
             ),
             React.createElement("tbody", null,
-              rkAssets.map((a,i) => React.createElement("tr", { key:a.id, style:{ borderBottom:`1px solid ${C.sur2}`, background:i%2?"rgba(255,255,255,.01)":"transparent" }},
-                React.createElement("td", { style:{ padding:"8px 10px", fontFamily:"monospace", fontWeight:700, color:C.acc }}, a.opcode),
-                React.createElement("td", { style:{ padding:"8px 10px", fontFamily:"monospace", fontWeight:600 }}, a.merk),
-                React.createElement("td", { style:{ padding:"8px 10px", fontFamily:"monospace" }}, a.type),
-                React.createElement("td", { style:{ padding:"8px 10px" }}, React.createElement(Bdg, { v:a.st, sm:true }))
-              ))
+              rkAssets.map((a,i) => editAssetId===a.id
+                ? React.createElement("tr", { key:a.id, style:{ borderBottom:`1px solid ${C.sur2}`, background:"rgba(245,158,11,.06)" }},
+                    React.createElement("td", { style:{ padding:"6px 10px" }},
+                      React.createElement("div", { style:{ display:"flex", gap:6, alignItems:"center" }},
+                        React.createElement("input", { style:inp({width:100, padding:"4px 8px"}), value:editOpc, onChange:e=>setEditOpc(e.target.value.toUpperCase()), autoFocus:true, onKeyDown:e=>e.key==="Enter"&&saveEditAsset() }),
+                        React.createElement("button", { onClick:saveEditAsset, style:{...btn(), padding:"4px 10px", fontSize:11} }, "✓"),
+                        React.createElement("button", { onClick:()=>setEditAssetId(null), style:{...btn(C.mut,false), padding:"4px 10px", fontSize:11} }, "✕")
+                      )
+                    ),
+                    React.createElement("td", { style:{ padding:"6px 10px", fontFamily:"monospace", fontWeight:600 }}, a.merk),
+                    React.createElement("td", { style:{ padding:"6px 10px", fontFamily:"monospace" }}, a.type),
+                    React.createElement("td", { style:{ padding:"6px 10px" }}, React.createElement(Bdg, { v:a.st, sm:true })),
+                    React.createElement("td", null)
+                  )
+                : React.createElement("tr", { key:a.id, style:{ borderBottom:`1px solid ${C.sur2}`, background:i%2?"rgba(255,255,255,.01)":"transparent" }},
+                    React.createElement("td", { style:{ padding:"8px 10px", fontFamily:"monospace", fontWeight:700, color:C.acc }}, a.opcode),
+                    React.createElement("td", { style:{ padding:"8px 10px", fontFamily:"monospace", fontWeight:600 }}, a.merk),
+                    React.createElement("td", { style:{ padding:"8px 10px", fontFamily:"monospace" }}, a.type),
+                    React.createElement("td", { style:{ padding:"8px 10px" }}, React.createElement(Bdg, { v:a.st, sm:true })),
+                    React.createElement("td", { style:{ padding:"8px 10px", textAlign:"right", whiteSpace:"nowrap" }},
+                      React.createElement("button", { onClick:()=>startEditAsset(a), style:{...ibtn(C.blue), marginRight:4} }, "✏"),
+                      React.createElement("button", { onClick:()=>delAsset(a.id), style:ibtn(C.red) }, "🗑")
+                    )
+                  )
+              )
             )
           )
     )
@@ -660,13 +882,13 @@ function OvzPage({ assets, prjs }) {
 
   const scopeRKs = useMemo(() => {
     const ps = fPrj ? prjs.filter(p=>p.id===fPrj) : prjs;
-    return ps.flatMap(p => (fSub ? p.subs.filter(s=>s.id===fSub) : p.subs).flatMap(s=>s.rks));
+    return ps.flatMap(p => (fSub?p.subs.filter(s=>s.id===fSub):p.subs).flatMap(s=>s.rks));
   }, [prjs, fPrj, fSub]);
 
   const filtered = useMemo(() => {
     return assets.filter(a => {
       if (fRK) return a.rk===fRK;
-      if (scopeRKs.length > 0) return scopeRKs.includes(a.rk);
+      if (scopeRKs.length>0) return scopeRKs.includes(a.rk);
       return true;
     });
   }, [assets, fRK, scopeRKs]);
@@ -674,21 +896,26 @@ function OvzPage({ assets, prjs }) {
   const grouped = useMemo(() => {
     const g = {};
     filtered.forEach(a => {
-      const k = `${a.merk}||${a.type}`;
-      if (!g[k]) g[k] = { merk:a.merk, type:a.type, total:0, beschikbaar:0, uitgegeven:0, rks:new Set() };
+      const k=`${a.merk}||${a.type}`;
+      if (!g[k]) g[k]={ merk:a.merk, type:a.type, total:0, beschikbaar:0, uitgegeven:0, rks:new Set() };
       g[k].total++; g[k][a.st]++; g[k].rks.add(a.rk);
     });
-    return Object.values(g).map(x => ({...x, rks:[...x.rks]}));
+    return Object.values(g).map(x=>({...x, rks:[...x.rks]}));
   }, [filtered]);
 
-  const prjOpts = [{ v:"", l:"Alle projecten" }, ...prjs.map(p=>({ v:p.id, l:`${p.nr} — ${p.naam}` }))];
+  const prjOpts = [{ v:"", l:"Alle projecten" }, ...prjs.map(p=>({v:p.id,l:`${p.nr} — ${p.naam}`}))];
   const subOpts = fPrj
     ? [{ v:"", l:"Alle subprojecten" }, ...(prjs.find(p=>p.id===fPrj)?.subs||[]).map(s=>({v:s.id,l:s.naam}))]
     : [{ v:"", l:"— Kies eerst project —" }];
-  const rkOpts = [{ v:"", l:"Alle regelkasten" }, ...scopeRKs.map(r=>({v:r,l:r}))];
+  const rkOpts  = [{ v:"", l:"Alle regelkasten" }, ...scopeRKs.map(r=>({v:r,l:r}))];
+
+  const csvOvz = () => downloadCSV('overzicht.csv',
+    ['Merk','Type','Totaal','Beschikbaar','Uitgegeven','Regelkasten'],
+    grouped.map(g => [g.merk, g.type, g.total, g.beschikbaar, g.uitgegeven, g.rks.join('; ')])
+  );
 
   return React.createElement("div", null,
-    React.createElement(SH, { t:"Overzicht componenten" }),
+    React.createElement(PH, { title:"Overzicht componenten", action: React.createElement(CsvBtn, { onClick:csvOvz }) }),
     React.createElement("div", { style:card({ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:14 }) },
       React.createElement(FS, { label:"Project",    opts:prjOpts, value:fPrj, onChange:e=>{setFPrj(e.target.value);setFSub("");setFRK("");} }),
       React.createElement(FS, { label:"Subproject", opts:subOpts, value:fSub, onChange:e=>{setFSub(e.target.value);setFRK("");} }),
@@ -696,9 +923,9 @@ function OvzPage({ assets, prjs }) {
     ),
     React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:20 }},
       [
-        { l:"Totaal gecodeerd", v:filtered.length,                               c:C.txt },
-        { l:"Beschikbaar",     v:filtered.filter(a=>a.st==="beschikbaar").length, c:C.grn },
-        { l:"Uitgegeven",      v:filtered.filter(a=>a.st==="uitgegeven").length,  c:C.mut },
+        { l:"Totaal gecodeerd", v:filtered.length,                                c:C.txt },
+        { l:"Beschikbaar",     v:filtered.filter(a=>a.st==="beschikbaar").length,  c:C.grn },
+        { l:"Uitgegeven",      v:filtered.filter(a=>a.st==="uitgegeven").length,   c:C.mut },
       ].map(x => React.createElement("div", { key:x.l, style:card({ textAlign:"center", padding:"14px 12px", marginBottom:0 }) },
         React.createElement("div", { style:{ fontSize:30, fontFamily:"monospace", fontWeight:800, color:x.c }}, x.v),
         React.createElement("div", { style:{ fontSize:10, color:C.mut, fontWeight:700, marginTop:4, textTransform:"uppercase", letterSpacing:".07em" }}, x.l)
@@ -741,30 +968,35 @@ function UitPage({ assets, setAssets }) {
   const [fRK,  setFRK]  = useState("");
   const [tab,  setTab]  = useState("beschikbaar");
 
-  const beschikbaar = assets.filter(a => a.st==="beschikbaar");
-  const uitgegeven  = assets.filter(a => a.st==="uitgegeven");
+  const beschikbaar = assets.filter(a=>a.st==="beschikbaar");
+  const uitgegeven  = assets.filter(a=>a.st==="uitgegeven");
   const allRK       = [...new Set(beschikbaar.map(a=>a.rk))].sort();
   const rkOpts      = [{ v:"", l:"Alle regelkasten" }, ...allRK.map(r=>({v:r,l:r}))];
   const filtered    = fRK ? beschikbaar.filter(a=>a.rk===fRK) : beschikbaar;
 
-  const toggleSel = id => setSel(p => { const n=new Set(p); n.has(id)?n.delete(id):n.add(id); return n; });
-  const toggleAll = () => setSel(sel.size===filtered.length ? new Set() : new Set(filtered.map(a=>a.id)));
+  const toggleSel = id => setSel(p=>{ const n=new Set(p); n.has(id)?n.delete(id):n.add(id); return n; });
+  const toggleAll = () => setSel(sel.size===filtered.length?new Set():new Set(filtered.map(a=>a.id)));
 
   const doUitgifte = () => {
     if (sel.size===0||!form.aan||!form.firma) return;
-    setAssets(p => p.map(a => sel.has(a.id) ? {...a, st:"uitgegeven", uitDat:form.datum, aan:form.aan, firma:form.firma} : a));
+    setAssets(p => p.map(a => sel.has(a.id)?{...a,st:"uitgegeven",uitDat:form.datum,aan:form.aan,firma:form.firma}:a));
     setSel(new Set());
   };
 
+  const csvUit = () => downloadCSV('uitgifte.csv',
+    ['Datum','Regelkast','Opnemercode','Merk','Type','Aan wie','Firma'],
+    uitgegeven.map(a => [a.uitDat||'', a.rk, a.opcode, a.merk, a.type, a.aan||'', a.firma||''])
+  );
+
   return React.createElement("div", null,
-    React.createElement(SH, { t:"Uitgifte componenten" }),
+    React.createElement(PH, { title:"Uitgifte componenten", action: React.createElement(CsvBtn, { onClick:csvUit }) }),
     React.createElement("div", { style:card({ border:`1px solid ${C.acc}40` }) },
       React.createElement("div", { style:{ fontSize:11, color:C.acc, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", marginBottom:14 }},
         `Uitgifte registreren — ${sel.size} geselecteerd`),
       React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 160px auto", gap:12, alignItems:"end" }},
-        React.createElement(FI, { label:"Aan wie *",  value:form.aan,   onChange:e=>setForm(p=>({...p,aan:e.target.value})),   placeholder:"Naam persoon" }),
-        React.createElement(FI, { label:"Firma *",    value:form.firma,  onChange:e=>setForm(p=>({...p,firma:e.target.value})), placeholder:"Bedrijfsnaam" }),
-        React.createElement(FI, { label:"Datum",      type:"date", value:form.datum, onChange:e=>setForm(p=>({...p,datum:e.target.value})) }),
+        React.createElement(FI, { label:"Aan wie *", value:form.aan,  onChange:e=>setForm(p=>({...p,aan:e.target.value})),  placeholder:"Naam persoon" }),
+        React.createElement(FI, { label:"Firma *",   value:form.firma, onChange:e=>setForm(p=>({...p,firma:e.target.value})),placeholder:"Bedrijfsnaam" }),
+        React.createElement(FI, { label:"Datum",     type:"date", value:form.datum, onChange:e=>setForm(p=>({...p,datum:e.target.value})) }),
         React.createElement("div", { style:{paddingTop:18} },
           React.createElement("button", { onClick:doUitgifte, disabled:sel.size===0||!form.aan||!form.firma, style:{...btn(), opacity:(sel.size===0||!form.aan||!form.firma)?0.4:1} },
             `✓ Uitgeven (${sel.size})`)
@@ -790,7 +1022,9 @@ function UitPage({ assets, setAssets }) {
                   React.createElement("th", { style:{ padding:"8px 12px", width:36 }},
                     React.createElement("input", { type:"checkbox", style:{ accentColor:C.acc }, checked:sel.size===filtered.length&&filtered.length>0, onChange:toggleAll })
                   ),
-                  ["Regelkast","Opnemercode","Merk","Type"].map(h => React.createElement("th", { key:h, style:{ textAlign:"left", padding:"8px 12px", fontSize:10, color:C.mut, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em" }}, h))
+                  ["Regelkast","Opnemercode","Merk","Type"].map(h =>
+                    React.createElement("th", { key:h, style:{ textAlign:"left", padding:"8px 12px", fontSize:10, color:C.mut, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em" }}, h)
+                  )
                 )
               ),
               React.createElement("tbody", null,

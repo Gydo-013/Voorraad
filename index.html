@@ -3,13 +3,14 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Artikelregistratie v2.1</title>
+<title>Artikelregistratie v2.2</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #0f1117; color: #e2e8f0; font-family: system-ui, sans-serif; font-size: 14px; }
   input[type=date]::-webkit-calendar-picker-indicator { filter: invert(0.6); }
+  input[type=file] { display: none; }
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: #1a1d27; }
   ::-webkit-scrollbar-thumb { background: #2e3350; border-radius: 3px; }
@@ -18,7 +19,7 @@
 <body>
 <div id="root"></div>
 <script>
-const { useState, useMemo } = React;
+const { useState, useMemo, useRef } = React;
 
 /* ═══════════════════════════════════════════════════════════════
    DEMO DATA
@@ -72,7 +73,7 @@ const D_ASSETS = [
 ];
 
 /* ═══════════════════════════════════════════════════════════════
-   CSV HELPER
+   CSV HELPERS
 ═══════════════════════════════════════════════════════════════ */
 function downloadCSV(filename, headers, rows) {
   const esc = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
@@ -83,6 +84,42 @@ function downloadCSV(filename, headers, rows) {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+function parseCSV(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return { headers: [], rows: [] };
+  
+  const parseLine = line => {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      const next = line[i + 1];
+      
+      if (char === '"') {
+        if (inQuotes && next === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        result.push(current);
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current);
+    return result;
+  };
+  
+  const headers = parseLine(lines[0]);
+  const rows = lines.slice(1).map(parseLine);
+  return { headers, rows };
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -150,9 +187,6 @@ function InfoChip({ label, value, color }) {
 function CsvBtn({ onClick }) {
   return React.createElement("button", { onClick, style:btn(C.grn, false, { padding:"6px 12px", fontSize:11 }) }, "⬇ CSV");
 }
-function ConfirmDel({ msg, onConfirm }) {
-  return window.confirm(msg) ? onConfirm() : null;
-}
 
 /* ═══════════════════════════════════════════════════════════════
    NAV
@@ -164,6 +198,7 @@ const NAV = [
   { id:"assetcodering", icon:"🏷", label:"Assetcodering" },
   { id:"overzicht",     icon:"📊", label:"Overzicht" },
   { id:"uitgifte",      icon:"📤", label:"Uitgifte" },
+  { id:"instellingen",  icon:"⚙️", label:"Instellingen" },
 ];
 
 /* ═══════════════════════════════════════════════════════════════
@@ -203,7 +238,7 @@ function App() {
     React.createElement("div", { style:{ width:176, background:C.sur, borderRight:`1px solid ${C.bdr}`, display:"flex", flexDirection:"column", flexShrink:0 }},
       React.createElement("div", { style:{ padding:"14px 12px", borderBottom:`1px solid ${C.bdr}` }},
         React.createElement("div", { style:{ fontFamily:"monospace", fontWeight:800, fontSize:11, color:C.acc, letterSpacing:".06em" }}, "▣ ARTIKELREG."),
-        React.createElement("div", { style:{ fontSize:10, color:C.mut, marginTop:2 }}, "v2.1 — demo")
+        React.createElement("div", { style:{ fontSize:10, color:C.mut, marginTop:2 }}, "v2.2 — demo")
       ),
       React.createElement("nav", { style:{ padding:8, flex:1 }},
         NAV.map(n => React.createElement("button", {
@@ -222,7 +257,8 @@ function App() {
       page==="bestellingen"  && React.createElement(BestPage,  shared),
       page==="assetcodering" && React.createElement(AssetPage, shared),
       page==="overzicht"     && React.createElement(OvzPage,   shared),
-      page==="uitgifte"      && React.createElement(UitPage,   shared)
+      page==="uitgifte"      && React.createElement(UitPage,   shared),
+      page==="instellingen"  && React.createElement(InstPage,  shared)
     )
   );
 }
@@ -384,7 +420,6 @@ function PrjPage({ prjs, setPrjs }) {
       )
     ),
     prjs.map(prj => React.createElement("div", { key:prj.id, style:card() },
-      /* Project header – edit mode or normal */
       editPrj?.id===prj.id
         ? React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr auto", gap:10, alignItems:"end", marginBottom:14 }},
             React.createElement(FI, { label:"Projectnummer *", value:editPrj.nr,   onChange:e=>setEditPrj(p=>({...p,nr:e.target.value})),   placeholder:"PRJ-..." }),
@@ -409,7 +444,6 @@ function PrjPage({ prjs, setPrjs }) {
           ),
       exp[prj.id] && React.createElement("div", null,
         prj.subs.map(sub => React.createElement("div", { key:sub.id, style:{ background:C.bg, border:`1px solid ${C.bdr}`, borderRadius:6, padding:"10px 14px", marginBottom:8 }},
-          /* Sub header – edit mode or normal */
           editSub?.subId===sub.id
             ? React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr auto", gap:10, alignItems:"end", marginBottom:8 }},
                 React.createElement(FI, { label:"Subproject naam *", value:editSub.naam, onChange:e=>setEditSub(p=>({...p,naam:e.target.value})), placeholder:"Naam" }),
@@ -607,7 +641,6 @@ function BestPage({ levs, prjs, bests, setBests, allRK }) {
     return (order[a.status]??9)-(order[b.status]??9);
   });
 
-  /* ── WIZARD helper ── */
   const WizardForm = ({ mode, best, setBest, arts, setArts, newArtS, setNewArtS, onSave, onCancel }) =>
     React.createElement("div", { style:{ maxWidth:960 }},
       React.createElement("div", { style:{ display:"flex", alignItems:"center", gap:12, marginBottom:20 }},
@@ -1066,6 +1099,311 @@ function UitPage({ assets, setAssets }) {
               )
             )
           )
+    )
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PAGINA: INSTELLINGEN (NIEUWE PAGINA)
+═══════════════════════════════════════════════════════════════ */
+function InstPage({ levs, setLevs, prjs, setPrjs, bests, setBests, assets, setAssets }) {
+  const fileInputLev = useRef(null);
+  const fileInputPrj = useRef(null);
+  const fileInputBest = useRef(null);
+  const fileInputAsset = useRef(null);
+
+  // ──────── LEVERANCIERS ────────
+  const exportLev = () => downloadCSV('leveranciers.csv',
+    ['Naam','Contactpersoon','Telefoon','E-mail','Opmerkingen'],
+    levs.map(l => [l.naam, l.contact, l.tel, l.email, l.opmerking])
+  );
+
+  const importLev = e => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const { headers, rows } = parseCSV(ev.target.result);
+      const imported = rows.map(r => ({
+        id: `l-${Date.now()}-${Math.random()}`,
+        naam: r[0] || '',
+        contact: r[1] || '',
+        tel: r[2] || '',
+        email: r[3] || '',
+        opmerking: r[4] || ''
+      }));
+      setLevs(imported);
+      alert(`${imported.length} leveranciers geïmporteerd`);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const resetLev = () => {
+    if (!window.confirm('Weet je zeker dat je alle leveranciers wilt wissen?')) return;
+    setLevs([]);
+  };
+
+  // ──────── PROJECTEN ────────
+  const exportPrj = () => {
+    const rows = [];
+    prjs.forEach(p => {
+      p.subs.forEach(s => {
+        if (s.rks.length > 0) s.rks.forEach(rk => rows.push([p.nr, p.naam, s.naam, rk]));
+        else rows.push([p.nr, p.naam, s.naam, '']);
+      });
+      if (p.subs.length === 0) rows.push([p.nr, p.naam, '', '']);
+    });
+    downloadCSV('projecten.csv', ['Projectnummer','Projectnaam','Subproject','Regelkast'], rows);
+  };
+
+  const importPrj = e => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const { headers, rows } = parseCSV(ev.target.result);
+      const prjMap = {};
+      
+      rows.forEach(r => {
+        const prjNr = r[0]?.trim();
+        const prjNaam = r[1]?.trim();
+        const subNaam = r[2]?.trim();
+        const rk = r[3]?.trim();
+        
+        if (!prjNr) return;
+        
+        if (!prjMap[prjNr]) {
+          prjMap[prjNr] = { id: `p-${Date.now()}-${Math.random()}`, nr: prjNr, naam: prjNaam || '', subs: [] };
+        }
+        
+        if (subNaam) {
+          let sub = prjMap[prjNr].subs.find(s => s.naam === subNaam);
+          if (!sub) {
+            sub = { id: `s-${Date.now()}-${Math.random()}`, naam: subNaam, rks: [] };
+            prjMap[prjNr].subs.push(sub);
+          }
+          if (rk && !sub.rks.includes(rk)) {
+            sub.rks.push(rk);
+          }
+        }
+      });
+      
+      const imported = Object.values(prjMap);
+      setPrjs(imported);
+      alert(`${imported.length} projecten geïmporteerd`);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const resetPrj = () => {
+    if (!window.confirm('Weet je zeker dat je alle projecten wilt wissen?')) return;
+    setPrjs([]);
+  };
+
+  // ──────── BESTELLINGEN ────────
+  const exportBest = () => {
+    const rows = [];
+    bests.forEach(b => {
+      const lev = levs.find(l => l.id === b.levId);
+      const prj = prjs.find(p => p.id === b.prjId);
+      const sub = prjs.find(p => p.id === b.prjId)?.subs.find(s => s.id === b.subId);
+      (b.arts.length > 0 ? b.arts : [{}]).forEach(a => {
+        rows.push([
+          b.status, lev?.naam || '', prj?.nr || '', sub?.naam || '',
+          b.offNr || '', b.offDat || '', b.ioNr || '', b.bestDat || '',
+          b.obNr || '', b.levBestNr || '', b.verwLev || '', b.pbNr || '', b.levDat || '',
+          a.merk || '', a.type || '', a.n || '', a.opm || ''
+        ]);
+      });
+    });
+    downloadCSV('bestellingen.csv',
+      ['Status','Leverancier','Project','Subproject','Offertenr','Offertedatum','IO Nr','Besteldatum','OB Nr','Lev.bestelnr','Verw.levering','Pakbonnr','Leverdatum','Merk','Type','Aantal','Opmerking'],
+      rows
+    );
+  };
+
+  const importBest = e => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const { headers, rows } = parseCSV(ev.target.result);
+      const bestMap = {};
+      
+      rows.forEach(r => {
+        const status = r[0]?.trim();
+        const levNaam = r[1]?.trim();
+        const prjNr = r[2]?.trim();
+        const subNaam = r[3]?.trim();
+        const ioNr = r[6]?.trim();
+        
+        if (!status) return;
+        
+        const lev = levs.find(l => l.naam === levNaam);
+        const prj = prjs.find(p => p.nr === prjNr);
+        const sub = prj?.subs.find(s => s.naam === subNaam);
+        
+        const key = `${status}-${levNaam}-${prjNr}-${subNaam}-${ioNr}`;
+        
+        if (!bestMap[key]) {
+          bestMap[key] = {
+            id: `b-${Date.now()}-${Math.random()}`,
+            levId: lev?.id || '',
+            prjId: prj?.id || '',
+            subId: sub?.id || '',
+            status: status,
+            heeftOff: !!r[4],
+            offNr: r[4] || '',
+            offDat: r[5] || '',
+            ioNr: r[6] || '',
+            bestDat: r[7] || '',
+            obNr: r[8] || '',
+            levBestNr: r[9] || '',
+            verwLev: r[10] || '',
+            pbNr: r[11] || '',
+            levDat: r[12] || '',
+            arts: []
+          };
+        }
+        
+        const merk = r[13]?.trim();
+        const type = r[14]?.trim();
+        if (merk && type) {
+          bestMap[key].arts.push({
+            id: `a-${Date.now()}-${Math.random()}`,
+            merk: merk,
+            type: type,
+            n: parseInt(r[15]) || 1,
+            opm: r[16] || ''
+          });
+        }
+      });
+      
+      const imported = Object.values(bestMap);
+      setBests(imported);
+      alert(`${imported.length} bestellingen geïmporteerd`);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const resetBest = () => {
+    if (!window.confirm('Weet je zeker dat je alle bestellingen wilt wissen?')) return;
+    setBests([]);
+  };
+
+  // ──────── ASSETS ────────
+  const exportAsset = () => downloadCSV('assets.csv',
+    ['Regelkast','Opnemercode','Merk','Type','Status','Uitgiftedatum','Aan wie','Firma'],
+    assets.map(a => [a.rk, a.opcode, a.merk, a.type, a.st, a.uitDat || '', a.aan || '', a.firma || ''])
+  );
+
+  const importAsset = e => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const { headers, rows } = parseCSV(ev.target.result);
+      const imported = rows.map(r => ({
+        id: `as-${Date.now()}-${Math.random()}`,
+        rk: r[0] || '',
+        opcode: r[1] || '',
+        merk: r[2] || '',
+        type: r[3] || '',
+        st: r[4] || 'beschikbaar',
+        uitDat: r[5] || '',
+        aan: r[6] || '',
+        firma: r[7] || '',
+        artId: ''
+      }));
+      setAssets(imported);
+      alert(`${imported.length} assets geïmporteerd`);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const resetAsset = () => {
+    if (!window.confirm('Weet je zeker dat je alle assets wilt wissen?')) return;
+    setAssets([]);
+  };
+
+  return React.createElement("div", { style:{ maxWidth:900 }},
+    React.createElement("div", { style:{ fontSize:11, fontWeight:700, color:C.mut, textTransform:"uppercase", letterSpacing:".08em", marginBottom:20 }}, "Instellingen — Data beheer"),
+    
+    // LEVERANCIERS
+    React.createElement("div", { style:card() },
+      React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }},
+        React.createElement(SH, { t:"Leveranciers" }),
+        React.createElement("div", { style:{ display:"flex", gap:8 }},
+          React.createElement("button", { onClick:exportLev, style:btn(C.grn, false, { padding:"5px 12px", fontSize:11 }) }, "⬇ Exporteren"),
+          React.createElement("button", { onClick:()=>fileInputLev.current?.click(), style:btn(C.blue, false, { padding:"5px 12px", fontSize:11 }) }, "⬆ Importeren"),
+          React.createElement("button", { onClick:resetLev, style:btn(C.red, false, { padding:"5px 12px", fontSize:11 }) }, "🗑 Wissen")
+        )
+      ),
+      React.createElement("input", { ref:fileInputLev, type:"file", accept:".csv", onChange:importLev }),
+      React.createElement("div", { style:{ fontSize:12, color:C.mut }}, 
+        `${levs.length} leverancier${levs.length !== 1 ? 's' : ''} in systeem`
+      )
+    ),
+
+    // PROJECTEN
+    React.createElement("div", { style:card() },
+      React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }},
+        React.createElement(SH, { t:"Projecten" }),
+        React.createElement("div", { style:{ display:"flex", gap:8 }},
+          React.createElement("button", { onClick:exportPrj, style:btn(C.grn, false, { padding:"5px 12px", fontSize:11 }) }, "⬇ Exporteren"),
+          React.createElement("button", { onClick:()=>fileInputPrj.current?.click(), style:btn(C.blue, false, { padding:"5px 12px", fontSize:11 }) }, "⬆ Importeren"),
+          React.createElement("button", { onClick:resetPrj, style:btn(C.red, false, { padding:"5px 12px", fontSize:11 }) }, "🗑 Wissen")
+        )
+      ),
+      React.createElement("input", { ref:fileInputPrj, type:"file", accept:".csv", onChange:importPrj }),
+      React.createElement("div", { style:{ fontSize:12, color:C.mut }}, 
+        `${prjs.length} project${prjs.length !== 1 ? 'en' : ''} in systeem`
+      )
+    ),
+
+    // BESTELLINGEN
+    React.createElement("div", { style:card() },
+      React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }},
+        React.createElement(SH, { t:"Bestellingen" }),
+        React.createElement("div", { style:{ display:"flex", gap:8 }},
+          React.createElement("button", { onClick:exportBest, style:btn(C.grn, false, { padding:"5px 12px", fontSize:11 }) }, "⬇ Exporteren"),
+          React.createElement("button", { onClick:()=>fileInputBest.current?.click(), style:btn(C.blue, false, { padding:"5px 12px", fontSize:11 }) }, "⬆ Importeren"),
+          React.createElement("button", { onClick:resetBest, style:btn(C.red, false, { padding:"5px 12px", fontSize:11 }) }, "🗑 Wissen")
+        )
+      ),
+      React.createElement("input", { ref:fileInputBest, type:"file", accept:".csv", onChange:importBest }),
+      React.createElement("div", { style:{ fontSize:12, color:C.mut }}, 
+        `${bests.length} bestelling${bests.length !== 1 ? 'en' : ''} in systeem`
+      )
+    ),
+
+    // ASSETS
+    React.createElement("div", { style:card() },
+      React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }},
+        React.createElement(SH, { t:"Assetcodering" }),
+        React.createElement("div", { style:{ display:"flex", gap:8 }},
+          React.createElement("button", { onClick:exportAsset, style:btn(C.grn, false, { padding:"5px 12px", fontSize:11 }) }, "⬇ Exporteren"),
+          React.createElement("button", { onClick:()=>fileInputAsset.current?.click(), style:btn(C.blue, false, { padding:"5px 12px", fontSize:11 }) }, "⬆ Importeren"),
+          React.createElement("button", { onClick:resetAsset, style:btn(C.red, false, { padding:"5px 12px", fontSize:11 }) }, "🗑 Wissen")
+        )
+      ),
+      React.createElement("input", { ref:fileInputAsset, type:"file", accept:".csv", onChange:importAsset }),
+      React.createElement("div", { style:{ fontSize:12, color:C.mut }}, 
+        `${assets.length} asset${assets.length !== 1 ? 's' : ''} gecodeerd`
+      )
+    ),
+
+    React.createElement("div", { style:card({ border:`1px solid ${C.acc}40`, marginTop:24 }) },
+      React.createElement("div", { style:{ fontSize:11, color:C.acc, fontWeight:700, marginBottom:8 }}, "ℹ Instructies"),
+      React.createElement("ul", { style:{ fontSize:12, color:C.mut, paddingLeft:20, lineHeight:1.6 }},
+        React.createElement("li", null, "Exporteren: Download de huidige data als CSV-bestand"),
+        React.createElement("li", null, "Importeren: Upload een CSV-bestand om data te vervangen (huidige data wordt overschreven)"),
+        React.createElement("li", null, "Wissen: Verwijder alle data van de betreffende pagina (na bevestiging)")
+      )
     )
   );
 }

@@ -3,23 +3,70 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Artikelregistratie v2.2</title>
+<title>Artikelregistratie v3.0</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<!-- Firebase -->
+<script type="module">
+  // ═══════════════════════════════════════════════
+  // FIREBASE CONFIG — vervang met jouw eigen config
+  // Ga naar: https://console.firebase.google.com
+  // 1. Maak een nieuw project aan
+  // 2. Voeg een Web App toe
+  // 3. Kopieer de firebaseConfig hieronder
+  // 4. Activeer Firestore Database (test mode)
+  // ═══════════════════════════════════════════════
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
+  import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, writeBatch, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAJTWHVBZz2VQutEIDKPtiTk2ep5sFoeEM",
+    authDomain: "voorraad-6ada3.firebaseapp.com",
+    projectId: "voorraad-6ada3",
+    storageBucket: "voorraad-6ada3.firebasestorage.app",
+    messagingSenderId: "318083496096",
+    appId: "1:318083496096:web:e946ed191a8095b32df1c5"
+  };
+
+  // Check of config ingevuld is
+  const isConfigured = firebaseConfig.apiKey !== "JOUW_API_KEY";
+
+  let db = null;
+  if (isConfigured) {
+  	const app = initializeApp(firebaseConfig);
+    db = getFirestore(app);
+  }
+
+  // Expose globally
+  window.__firebase = {
+    db, isConfigured,
+    collection, doc, setDoc, deleteDoc, onSnapshot, writeBatch, serverTimestamp
+  };
+  window.dispatchEvent(new Event('firebase-ready'));
+</script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #0f1117; color: #e2e8f0; font-family: system-ui, sans-serif; font-size: 14px; }
+  body { background: #0a0d14; color: #e2e8f0; font-family: 'Courier New', monospace; font-size: 14px; }
   input[type=date]::-webkit-calendar-picker-indicator { filter: invert(0.6); }
   input[type=file] { display: none; }
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: #1a1d27; }
-  ::-webkit-scrollbar-thumb { background: #2e3350; border-radius: 3px; }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: #0a0d14; }
+  ::-webkit-scrollbar-thumb { background: #1e2235; border-radius: 2px; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+  .fade-in { animation: fadeIn .2s ease forwards; }
+  @media print {
+    .no-print { display: none !important; }
+    body { background: white; color: black; font-family: Arial, sans-serif; }
+    .print-only { display: block !important; }
+  }
+  .print-only { display: none; }
 </style>
 </head>
 <body>
 <div id="root"></div>
 <script>
-const { useState, useMemo, useRef } = React;
+const { useState, useMemo, useRef, useEffect, useCallback } = React;
 
 /* ═══════════════════════════════════════════════════════════════
    DEMO DATA
@@ -73,6 +120,77 @@ const D_ASSETS = [
 ];
 
 /* ═══════════════════════════════════════════════════════════════
+   FIREBASE HOOK
+═══════════════════════════════════════════════════════════════ */
+function useFirebase() {
+  const [ready, setReady] = useState(!!window.__firebase);
+  useEffect(() => {
+    if (window.__firebase) { setReady(true); return; }
+    const h = () => setReady(true);
+    window.addEventListener('firebase-ready', h);
+    return () => window.removeEventListener('firebase-ready', h);
+  }, []);
+  return ready ? window.__firebase : null;
+}
+
+function useFirestoreCollection(fb, colName, fallback) {
+  const [data, setData] = useState(fallback);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!fb?.isConfigured || !fb.db) {
+      setData(fallback);
+      setLoaded(true);
+      return;
+    }
+    const unsub = fb.onSnapshot(fb.collection(fb.db, colName), snap => {
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setData(docs.length > 0 ? docs : fallback);
+      setLoaded(true);
+    });
+    return unsub;
+  }, [fb?.isConfigured]);
+
+  const upsert = useCallback(async (item) => {
+    if (!fb?.isConfigured || !fb.db) {
+      setData(p => p.find(x => x.id === item.id) ? p.map(x => x.id === item.id ? item : x) : [...p, item]);
+      return;
+    }
+    const { id, ...rest } = item;
+    await fb.setDoc(fb.doc(fb.db, colName, id), { ...rest, _updated: fb.serverTimestamp() });
+  }, [fb?.isConfigured]);
+
+  const remove = useCallback(async (id) => {
+    if (!fb?.isConfigured || !fb.db) {
+      setData(p => p.filter(x => x.id !== id));
+      return;
+    }
+    await fb.deleteDoc(fb.doc(fb.db, colName, id));
+  }, [fb?.isConfigured]);
+
+  const setAll = useCallback(async (items) => {
+    if (!fb?.isConfigured || !fb.db) {
+      setData(items);
+      return;
+    }
+    // batch write
+    const batch = fb.writeBatch(fb.db);
+    // first delete existing
+    const snap = await new Promise(res => {
+      const unsub = fb.onSnapshot(fb.collection(fb.db, colName), s => { unsub(); res(s); });
+    });
+    snap.docs.forEach(d => batch.delete(d.ref));
+    items.forEach(item => {
+      const { id, ...rest } = item;
+      batch.set(fb.doc(fb.db, colName, id), { ...rest, _updated: fb.serverTimestamp() });
+    });
+    await batch.commit();
+  }, [fb?.isConfigured]);
+
+  return { data, setData, loaded, upsert, remove, setAll };
+}
+
+/* ═══════════════════════════════════════════════════════════════
    CSV HELPERS
 ═══════════════════════════════════════════════════════════════ */
 function downloadCSV(filename, headers, rows) {
@@ -89,103 +207,101 @@ function downloadCSV(filename, headers, rows) {
 function parseCSV(text) {
   const lines = text.split(/\r?\n/).filter(l => l.trim());
   if (lines.length < 2) return { headers: [], rows: [] };
-  
   const parseLine = line => {
-    const result = [];
-    let current = '';
-    let inQuotes = false;
-    
+    const result = []; let current = ''; let inQuotes = false;
     for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-      const next = line[i + 1];
-      
-      if (char === '"') {
-        if (inQuotes && next === '"') {
-          current += '"';
-          i++;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (char === ',' && !inQuotes) {
-        result.push(current);
-        current = '';
-      } else {
-        current += char;
-      }
+      const char = line[i]; const next = line[i + 1];
+      if (char === '"') { if (inQuotes && next === '"') { current += '"'; i++; } else { inQuotes = !inQuotes; } }
+      else if (char === ',' && !inQuotes) { result.push(current); current = ''; }
+      else { current += char; }
     }
     result.push(current);
     return result;
   };
-  
-  const headers = parseLine(lines[0]);
-  const rows = lines.slice(1).map(parseLine);
-  return { headers, rows };
+  return { headers: parseLine(lines[0]), rows: lines.slice(1).map(parseLine) };
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   DESIGN TOKENS & STYLE HELPERS
+   DESIGN TOKENS
 ═══════════════════════════════════════════════════════════════ */
 const C = {
-  bg:"#0f1117", sur:"#1a1d27", sur2:"#22263a", bdr:"#2e3350",
+  bg:"#0a0d14", sur:"#111420", sur2:"#181c2e", bdr:"#252a3d",
   acc:"#f59e0b", blue:"#3b82f6", grn:"#22c55e", red:"#ef4444",
-  mut:"#64748b", txt:"#e2e8f0",
+  mut:"#4a5568", txt:"#e2e8f0", purple:"#a855f7",
 };
-const card  = x => ({ background:C.sur, border:`1px solid ${C.bdr}`, borderRadius:8, padding:20, marginBottom:16, ...x });
-const inp   = x => ({ width:"100%", background:C.bg, border:`1px solid ${C.bdr}`, color:C.txt, fontFamily:"monospace", fontSize:13, padding:"7px 10px", borderRadius:5, outline:"none", ...x });
-const lbl   = { display:"block", fontSize:11, fontWeight:600, color:C.mut, textTransform:"uppercase", letterSpacing:".06em", marginBottom:4 };
-const btn   = (col=C.acc, fill=true, x={}) => ({ background:fill?col:"transparent", color:fill?"#000":col, border:`1px solid ${fill?"transparent":col+"60"}`, padding:"6px 14px", borderRadius:5, cursor:"pointer", fontSize:12, fontWeight:700, display:"inline-flex", alignItems:"center", gap:5, ...x });
+const card  = x => ({ background:C.sur, border:`1px solid ${C.bdr}`, borderRadius:6, padding:20, marginBottom:14, ...x });
+const inp   = x => ({ width:"100%", background:C.bg, border:`1px solid ${C.bdr}`, color:C.txt, fontFamily:"'Courier New',monospace", fontSize:13, padding:"7px 10px", borderRadius:4, outline:"none", ...x });
+const lbl   = { display:"block", fontSize:10, fontWeight:700, color:C.mut, textTransform:"uppercase", letterSpacing:".08em", marginBottom:4 };
+const btn   = (col=C.acc, fill=true, x={}) => ({ background:fill?col:"transparent", color:fill?"#000":col, border:`1px solid ${fill?"transparent":col+"60"}`, padding:"6px 14px", borderRadius:4, cursor:"pointer", fontSize:12, fontWeight:700, display:"inline-flex", alignItems:"center", gap:5, transition:"opacity .15s", ...x });
 const ibtn  = (col, x={}) => btn(col, false, { padding:"3px 9px", fontSize:11, ...x });
 
 const ST = {
-  offerte:    { l:"Offerte",    c:"#a855f7", bg:"rgba(168,85,247,.15)" },
-  bestelling: { l:"Bestelling", c:C.acc,    bg:"rgba(245,158,11,.15)"  },
-  bevestigd:  { l:"Bevestigd",  c:C.blue,   bg:"rgba(59,130,246,.15)"  },
-  geleverd:   { l:"Geleverd",   c:C.grn,    bg:"rgba(34,197,94,.15)"   },
-  beschikbaar:{ l:"Beschikbaar",c:C.grn,    bg:"rgba(34,197,94,.15)"   },
-  uitgegeven: { l:"Uitgegeven", c:C.mut,    bg:"rgba(100,116,139,.15)" },
+  offerte:    { l:"Offerte",    c:"#a855f7", bg:"rgba(168,85,247,.12)" },
+  bestelling: { l:"Bestelling", c:C.acc,    bg:"rgba(245,158,11,.12)"  },
+  bevestigd:  { l:"Bevestigd",  c:C.blue,   bg:"rgba(59,130,246,.12)"  },
+  geleverd:   { l:"Geleverd",   c:C.grn,    bg:"rgba(34,197,94,.12)"   },
+  beschikbaar:{ l:"Beschikbaar",c:C.grn,    bg:"rgba(34,197,94,.12)"   },
+  uitgegeven: { l:"Uitgegeven", c:C.mut,    bg:"rgba(74,85,104,.12)"   },
 };
 
 function Bdg({ v, sm }) {
-  const c = ST[v] || { l:v, c:C.mut, bg:"rgba(100,116,139,.15)" };
-  return React.createElement("span", { style:{ background:c.bg, color:c.c, border:`1px solid ${c.c}40`, borderRadius:4, padding:sm?"1px 6px":"2px 9px", fontSize:sm?10:11, fontWeight:700, fontFamily:"monospace", whiteSpace:"nowrap" }}, c.l);
+  const c = ST[v] || { l:v, c:C.mut, bg:"rgba(74,85,104,.12)" };
+  return React.createElement("span", { style:{ background:c.bg, color:c.c, border:`1px solid ${c.c}30`, borderRadius:3, padding:sm?"1px 6px":"2px 9px", fontSize:sm?10:11, fontWeight:700, fontFamily:"'Courier New',monospace", whiteSpace:"nowrap" }}, c.l);
 }
-function FI({ label, ...p }) {
+
+// Controlled input — fixed typing bug
+function FI({ label, value, onChange, ...p }) {
   return React.createElement("div", null,
     label && React.createElement("label", { style:lbl }, label),
-    React.createElement("input", { style:inp(), ...p })
+    React.createElement("input", { style:inp(), value:value??'', onChange, ...p })
   );
 }
-function FT({ label, ...p }) {
+function FT({ label, value, onChange, ...p }) {
   return React.createElement("div", null,
     React.createElement("label", { style:lbl }, label),
-    React.createElement("textarea", { style:inp({ height:60, resize:"vertical" }), ...p })
+    React.createElement("textarea", { style:inp({ height:60, resize:"vertical" }), value:value??'', onChange, ...p })
   );
 }
+// Controlled select
 function FS({ label, opts, value, onChange }) {
   return React.createElement("div", null,
     label && React.createElement("label", { style:lbl }, label),
-    React.createElement("select", { style:inp(), value, onChange },
+    React.createElement("select", { style:inp(), value:value??'', onChange },
       opts.map(o => React.createElement("option", { key:o.v, value:o.v }, o.l))
     )
   );
 }
 function SH({ t }) {
-  return React.createElement("div", { style:{ fontSize:11, fontWeight:700, color:C.mut, textTransform:"uppercase", letterSpacing:".08em", marginBottom:14 }}, t);
+  return React.createElement("div", { style:{ fontSize:10, fontWeight:700, color:C.mut, textTransform:"uppercase", letterSpacing:".1em", marginBottom:14 }}, t);
 }
 function PH({ title, action }) {
-  return React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }},
-    React.createElement("div", { style:{ fontSize:11, fontWeight:700, color:C.mut, textTransform:"uppercase", letterSpacing:".08em" }}, title),
+  return React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }},
+    React.createElement("div", { style:{ fontSize:11, fontWeight:700, color:C.mut, textTransform:"uppercase", letterSpacing:".1em" }}, title),
     React.createElement("div", { style:{ display:"flex", gap:8 }}, action)
   );
 }
 function InfoChip({ label, value, color }) {
-  return React.createElement("div", { style:{ background:C.bg, border:`1px solid ${C.bdr}`, borderRadius:5, padding:"8px 12px" }},
-    React.createElement("div", { style:{ fontSize:10, color:C.mut, fontWeight:600, textTransform:"uppercase", letterSpacing:".05em", marginBottom:3 }}, label),
-    React.createElement("div", { style:{ fontFamily:"monospace", fontSize:12, fontWeight:600, color:color||C.txt }}, value)
+  return React.createElement("div", { style:{ background:C.bg, border:`1px solid ${C.bdr}`, borderRadius:4, padding:"7px 11px" }},
+    React.createElement("div", { style:{ fontSize:10, color:C.mut, fontWeight:700, textTransform:"uppercase", letterSpacing:".05em", marginBottom:2 }}, label),
+    React.createElement("div", { style:{ fontFamily:"'Courier New',monospace", fontSize:12, fontWeight:700, color:color||C.txt }}, value)
   );
 }
 function CsvBtn({ onClick }) {
-  return React.createElement("button", { onClick, style:btn(C.grn, false, { padding:"6px 12px", fontSize:11 }) }, "⬇ CSV");
+  return React.createElement("button", { onClick, style:btn(C.grn, false, { padding:"5px 11px", fontSize:11 }) }, "⬇ CSV");
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FIREBASE STATUS BANNER
+═══════════════════════════════════════════════════════════════ */
+function FbBanner({ fb }) {
+  if (!fb) return null;
+  if (fb.isConfigured) return React.createElement("div", { style:{ background:"rgba(34,197,94,.08)", border:`1px solid ${C.grn}30`, borderRadius:4, padding:"6px 12px", marginBottom:14, fontSize:11, color:C.grn, display:"flex", alignItems:"center", gap:8 }},
+    React.createElement("span", { style:{ width:6, height:6, borderRadius:"50%", background:C.grn, display:"inline-block", boxShadow:`0 0 6px ${C.grn}` }}),
+    "Firebase verbonden — data wordt automatisch opgeslagen"
+  );
+  return React.createElement("div", { style:{ background:"rgba(245,158,11,.08)", border:`1px solid ${C.acc}30`, borderRadius:4, padding:"8px 14px", marginBottom:14, fontSize:11, color:C.acc }},
+    "⚠ Firebase niet geconfigureerd — data wordt niet opgeslagen tussen sessies. Ga naar ⚙ Instellingen voor setup-instructies."
+  );
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -205,53 +321,99 @@ const NAV = [
    APP ROOT
 ═══════════════════════════════════════════════════════════════ */
 function App() {
-  const [page, setPage]     = useState("bestellingen");
-  const [levs,  setLevs]    = useState(D_LEV);
-  const [prjs,  setPrjs]    = useState(D_PRJ);
-  const [bests, setBests]   = useState(D_BEST);
-  const [assets, setAssets] = useState(D_ASSETS);
-  const [lastRK, setLastRK] = useState("RK-101");
+  const fb = useFirebase();
+  const [page, setPage] = useState("bestellingen");
+
+  const levStore   = useFirestoreCollection(fb, "leveranciers", D_LEV);
+  const prjStore   = useFirestoreCollection(fb, "projecten",    D_PRJ);
+  const bestStore  = useFirestoreCollection(fb, "bestellingen", D_BEST);
+  const assetStore = useFirestoreCollection(fb, "assets",       D_ASSETS);
+
+  const levs   = levStore.data;
+  const prjs   = prjStore.data;
+  const bests  = bestStore.data;
+  const assets = assetStore.data;
+
+  const setLevs   = useCallback((fn) => { const next = typeof fn === 'function' ? fn(levStore.data)   : fn; levStore.setData(next);   if (fb?.isConfigured) next.forEach(x => levStore.upsert(x));   }, [levStore, fb]);
+  const setPrjs   = useCallback((fn) => { const next = typeof fn === 'function' ? fn(prjStore.data)   : fn; prjStore.setData(next);   if (fb?.isConfigured) next.forEach(x => prjStore.upsert(x));   }, [prjStore, fb]);
+  const setBests  = useCallback((fn) => { const next = typeof fn === 'function' ? fn(bestStore.data)  : fn; bestStore.setData(next);  if (fb?.isConfigured) next.forEach(x => bestStore.upsert(x));  }, [bestStore, fb]);
+  const setAssets = useCallback((fn) => { const next = typeof fn === 'function' ? fn(assetStore.data) : fn; assetStore.setData(next); if (fb?.isConfigured) next.forEach(x => assetStore.upsert(x)); }, [assetStore, fb]);
+
+  // For single upsert/delete operations that need direct control
+  const upsertLev   = async (item) => { levStore.setData(p => p.find(x=>x.id===item.id)?p.map(x=>x.id===item.id?item:x):[...p,item]); await levStore.upsert(item); };
+  const deleteLev   = async (id)   => { levStore.setData(p => p.filter(x=>x.id!==id)); await levStore.remove(id); };
+  const upsertPrj   = async (item) => { prjStore.setData(p => p.find(x=>x.id===item.id)?p.map(x=>x.id===item.id?item:x):[...p,item]); await prjStore.upsert(item); };
+  const deletePrj   = async (id)   => { prjStore.setData(p => p.filter(x=>x.id!==id)); await prjStore.remove(id); };
+  const upsertBest  = async (item) => { bestStore.setData(p => p.find(x=>x.id===item.id)?p.map(x=>x.id===item.id?item:x):[...p,item]); await bestStore.upsert(item); };
+  const deleteBest  = async (id)   => { bestStore.setData(p => p.filter(x=>x.id!==id)); await bestStore.remove(id); };
+  const upsertAsset = async (item) => { assetStore.setData(p => p.find(x=>x.id===item.id)?p.map(x=>x.id===item.id?item:x):[...p,item]); await assetStore.upsert(item); };
+  const deleteAsset = async (id)   => { assetStore.setData(p => p.filter(x=>x.id!==id)); await assetStore.remove(id); };
 
   const allRK = useMemo(() =>
     prjs.flatMap(p => p.subs.flatMap(s =>
       s.rks.map(r => ({ v:r, l:`${r}  —  ${p.nr} / ${s.naam}`, prjId:p.id, subId:s.id }))
     )), [prjs]);
 
-  const assetCnt = useMemo(() => {
-    const c = {};
-    assets.forEach(a => { const k=`${a.merk}||${a.type}`; c[k]=(c[k]||0)+1; });
-    return c;
-  }, [assets]);
+  // FIXED: merge same merk+type across delivered orders
+  const availArts = useMemo(() => {
+    const assetCount = {};
+    assets.forEach(a => {
+      const k = `${a.merk}||${a.type}`;
+      assetCount[k] = (assetCount[k] || 0) + 1;
+    });
 
-  const availArts = useMemo(() =>
-    bests.filter(b => b.status==="geleverd").flatMap(b =>
-      b.arts.map(a => {
-        const key=`${a.merk}||${a.type}`;
-        const coded=assetCnt[key]||0;
-        return { ...a, coded, remaining:a.n-coded, bestId:b.id };
-      }).filter(a => a.remaining>0)
-    ), [bests, assetCnt]);
+    const merged = {};
+    bests.filter(b => b.status === "geleverd").forEach(b => {
+      b.arts.forEach(a => {
+        const k = `${a.merk}||${a.type}`;
+        if (!merged[k]) {
+          merged[k] = { merk: a.merk, type: a.type, totalN: 0, artIds: [], id: k };
+        }
+        merged[k].totalN += Number(a.n);
+        merged[k].artIds.push(a.id);
+      });
+    });
 
-  const shared = { levs, setLevs, prjs, setPrjs, bests, setBests, assets, setAssets, allRK, availArts, lastRK, setLastRK };
+    return Object.values(merged).map(m => {
+      const coded = assetCount[m.id] || 0;
+      return { ...m, coded, remaining: m.totalN - coded };
+    }).filter(m => m.remaining > 0);
+  }, [bests, assets]);
 
-  return React.createElement("div", { style:{ display:"flex", height:"100vh", background:C.bg, color:C.txt, fontFamily:"system-ui,sans-serif", fontSize:14 }},
-    React.createElement("div", { style:{ width:176, background:C.sur, borderRight:`1px solid ${C.bdr}`, display:"flex", flexDirection:"column", flexShrink:0 }},
+  const [lastRK, setLastRK] = useState("RK-101");
+
+  const shared = {
+    fb, levs, setLevs, upsertLev, deleteLev,
+    prjs, setPrjs, upsertPrj, deletePrj,
+    bests, setBests, upsertBest, deleteBest,
+    assets, setAssets, upsertAsset, deleteAsset,
+    allRK, availArts, lastRK, setLastRK,
+    levStore, prjStore, bestStore, assetStore
+  };
+
+  return React.createElement("div", { style:{ display:"flex", height:"100vh", background:C.bg, color:C.txt, fontFamily:"'Courier New',monospace", fontSize:14 }},
+    React.createElement("div", { style:{ width:172, background:C.sur, borderRight:`1px solid ${C.bdr}`, display:"flex", flexDirection:"column", flexShrink:0 }},
       React.createElement("div", { style:{ padding:"14px 12px", borderBottom:`1px solid ${C.bdr}` }},
-        React.createElement("div", { style:{ fontFamily:"monospace", fontWeight:800, fontSize:11, color:C.acc, letterSpacing:".06em" }}, "▣ ARTIKELREG."),
-        React.createElement("div", { style:{ fontSize:10, color:C.mut, marginTop:2 }}, "v2.2 — demo")
+        React.createElement("div", { style:{ fontWeight:800, fontSize:11, color:C.acc, letterSpacing:".08em" }}, "▣ ARTIKELREG."),
+        React.createElement("div", { style:{ fontSize:10, color:C.mut, marginTop:2 }},
+          fb?.isConfigured
+            ? React.createElement("span", { style:{ color:C.grn }}, "● Firebase")
+            : React.createElement("span", { style:{ color:C.acc, animation:"pulse 2s infinite" }}, "○ Lokaal")
+        )
       ),
-      React.createElement("nav", { style:{ padding:8, flex:1 }},
+      React.createElement("nav", { style:{ padding:6, flex:1 }},
         NAV.map(n => React.createElement("button", {
           key:n.id, onClick:()=>setPage(n.id),
-          style:{ display:"flex", alignItems:"center", gap:8, width:"100%", padding:"8px 10px",
-            background:page===n.id?"rgba(245,158,11,.12)":"none",
-            border:page===n.id?"1px solid rgba(245,158,11,.25)":"1px solid transparent",
-            color:page===n.id?C.acc:C.mut, borderRadius:6, cursor:"pointer",
-            fontSize:12, fontWeight:page===n.id?600:400, marginBottom:2, textAlign:"left" }
-        }, React.createElement("span", { style:{ fontSize:15 }}, n.icon), n.label))
+          style:{ display:"flex", alignItems:"center", gap:8, width:"100%", padding:"7px 10px",
+            background:page===n.id?"rgba(245,158,11,.1)":"none",
+            border:page===n.id?`1px solid ${C.acc}30`:"1px solid transparent",
+            color:page===n.id?C.acc:C.mut, borderRadius:4, cursor:"pointer",
+            fontSize:11, fontWeight:page===n.id?700:400, marginBottom:1, textAlign:"left" }
+        }, React.createElement("span", { style:{ fontSize:14 }}, n.icon), n.label))
       )
     ),
-    React.createElement("div", { style:{ flex:1, overflow:"auto", padding:24 }},
+    React.createElement("div", { style:{ flex:1, overflow:"auto", padding:22 }},
+      React.createElement(FbBanner, { fb }),
       page==="leveranciers"  && React.createElement(LevPage,   shared),
       page==="projecten"     && React.createElement(PrjPage,   shared),
       page==="bestellingen"  && React.createElement(BestPage,  shared),
@@ -264,23 +426,23 @@ function App() {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   PAGINA: LEVERANCIERS
+   LEVERANCIERS
 ═══════════════════════════════════════════════════════════════ */
-function LevPage({ levs, setLevs }) {
+function LevPage({ levs, upsertLev, deleteLev }) {
   const empty = { naam:"", contact:"", tel:"", email:"", opmerking:"" };
   const [form, setForm] = useState(null);
   const set = k => e => setForm(p => ({...p, [k]:e.target.value}));
 
-  const save = () => {
+  const save = async () => {
     if (!form?.naam) return;
-    if (form.id) setLevs(p => p.map(l => l.id===form.id ? form : l));
-    else          setLevs(p => [...p, {...form, id:`l-${Date.now()}`}]);
+    const item = form.id ? form : {...form, id:`l-${Date.now()}`};
+    await upsertLev(item);
     setForm(null);
   };
 
-  const del = l => {
+  const del = async l => {
     if (!window.confirm(`"${l.naam}" verwijderen?`)) return;
-    setLevs(p => p.filter(x => x.id!==l.id));
+    await deleteLev(l.id);
   };
 
   const csvLevs = () => downloadCSV('leveranciers.csv',
@@ -295,7 +457,7 @@ function LevPage({ levs, setLevs }) {
         React.createElement("button", { onClick:()=>setForm(empty), style:btn() }, "+ Nieuw")
       )
     }),
-    form && React.createElement("div", { style:card({ border:`1px solid ${C.acc}50`, marginBottom:24 })},
+    form && React.createElement("div", { style:card({ border:`1px solid ${C.acc}40`, marginBottom:20 })},
       React.createElement(SH, { t:form.id?"Leverancier bewerken":"Nieuwe leverancier" }),
       React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:14, marginBottom:14 }},
         React.createElement(FI, { label:"Bedrijfsnaam *", value:form.naam,    onChange:set("naam"),    placeholder:"Bedrijf BV" }),
@@ -303,8 +465,8 @@ function LevPage({ levs, setLevs }) {
         React.createElement(FI, { label:"Telefoon",       value:form.tel,     onChange:set("tel"),     placeholder:"06-..." })
       ),
       React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 2fr", gap:14, marginBottom:16 }},
-        React.createElement(FI, { label:"E-mail",     value:form.email,    onChange:set("email"),    placeholder:"info@..." }),
-        React.createElement(FT, { label:"Opmerkingen",value:form.opmerking,onChange:set("opmerking") })
+        React.createElement(FI, { label:"E-mail",      value:form.email,     onChange:set("email"),     placeholder:"info@..." }),
+        React.createElement(FT, { label:"Opmerkingen", value:form.opmerking, onChange:set("opmerking") })
       ),
       React.createElement("div", { style:{ display:"flex", gap:8 }},
         React.createElement("button", { onClick:save, style:btn() }, "✓ Opslaan"),
@@ -319,7 +481,7 @@ function LevPage({ levs, setLevs }) {
           l.tel     && React.createElement("span", null, "📞 ", l.tel),
           l.email   && React.createElement("span", null, "✉ ", l.email)
         ),
-        l.opmerking && React.createElement("div", { style:{ marginTop:8, fontSize:12, color:"#94a3b8", background:C.sur2, borderRadius:4, padding:"6px 10px", borderLeft:`3px solid ${C.acc}60` }}, l.opmerking)
+        l.opmerking && React.createElement("div", { style:{ marginTop:8, fontSize:12, color:"#94a3b8", background:C.sur2, borderRadius:3, padding:"6px 10px", borderLeft:`3px solid ${C.acc}50` }}, l.opmerking)
       ),
       React.createElement("div", { style:{ display:"flex", gap:6, flexShrink:0 }},
         React.createElement("button", { onClick:()=>setForm({...l}), style:ibtn(C.blue) }, "✏ Bewerken"),
@@ -330,9 +492,9 @@ function LevPage({ levs, setLevs }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   PAGINA: PROJECTEN
+   PROJECTEN
 ═══════════════════════════════════════════════════════════════ */
-function PrjPage({ prjs, setPrjs }) {
+function PrjPage({ prjs, upsertPrj, deletePrj, setPrjs }) {
   const [exp,     setExp]     = useState({});
   const [adding,  setAdding]  = useState(null);
   const [val,     setVal]     = useState("");
@@ -342,51 +504,64 @@ function PrjPage({ prjs, setPrjs }) {
 
   const toggle = id => setExp(p => ({...p, [id]:!p[id]}));
 
-  const doAdd = () => {
+  const doAdd = async () => {
     if (!val.trim()) return;
     if (adding.type==="prj") {
-      setPrjs(p => [...p, { id:`p-${Date.now()}`, nr:val.trim(), naam:val2.trim(), subs:[] }]);
+      const item = { id:`p-${Date.now()}`, nr:val.trim(), naam:val2.trim(), subs:[] };
+      await upsertPrj(item);
     } else if (adding.type==="sub") {
-      setPrjs(p => p.map(prj => prj.id===adding.prjId
-        ? {...prj, subs:[...prj.subs, {id:`s-${Date.now()}`, naam:val.trim(), rks:[]}]}
-        : prj));
+      const prj = prjs.find(p => p.id===adding.prjId);
+      if (!prj) return;
+      const updated = {...prj, subs:[...prj.subs, {id:`s-${Date.now()}`, naam:val.trim(), rks:[]}]};
+      await upsertPrj(updated);
     } else if (adding.type==="rk") {
-      setPrjs(p => p.map(prj => ({
-        ...prj, subs:prj.subs.map(s => s.id===adding.subId ? {...s, rks:[...s.rks, val.trim()]} : s)
-      })));
+      for (const prj of prjs) {
+        const sub = prj.subs.find(s => s.id===adding.subId);
+        if (sub) {
+          const updated = {...prj, subs:prj.subs.map(s => s.id===adding.subId ? {...s, rks:[...s.rks, val.trim()]} : s)};
+          await upsertPrj(updated);
+          break;
+        }
+      }
     }
     setAdding(null); setVal(""); setVal2("");
   };
 
-  const saveEditPrj = () => {
+  const saveEditPrj = async () => {
     if (!editPrj?.nr) return;
-    setPrjs(p => p.map(prj => prj.id===editPrj.id ? {...prj, nr:editPrj.nr, naam:editPrj.naam} : prj));
+    const prj = prjs.find(p => p.id===editPrj.id);
+    await upsertPrj({...prj, nr:editPrj.nr, naam:editPrj.naam});
     setEditPrj(null);
   };
 
-  const saveEditSub = () => {
+  const saveEditSub = async () => {
     if (!editSub?.naam) return;
-    setPrjs(p => p.map(prj => ({
-      ...prj, subs:prj.subs.map(s => s.id===editSub.subId ? {...s, naam:editSub.naam} : s)
-    })));
+    const prj = prjs.find(p => p.subs.some(s => s.id===editSub.subId));
+    if (!prj) return;
+    await upsertPrj({...prj, subs:prj.subs.map(s => s.id===editSub.subId ? {...s, naam:editSub.naam} : s)});
     setEditSub(null);
   };
 
-  const delPrj = id => {
-    if (!window.confirm('Project verwijderen? Alle subprojecten en regelkasten worden ook verwijderd.')) return;
-    setPrjs(p => p.filter(prj => prj.id!==id));
+  const delPrj = async id => {
+    if (!window.confirm('Project verwijderen?')) return;
+    await deletePrj(id);
   };
 
-  const delSub = (prjId, subId) => {
+  const delSub = async (prjId, subId) => {
     if (!window.confirm('Subproject verwijderen?')) return;
-    setPrjs(p => p.map(prj => prj.id===prjId ? {...prj, subs:prj.subs.filter(s => s.id!==subId)} : prj));
+    const prj = prjs.find(p => p.id===prjId);
+    await upsertPrj({...prj, subs:prj.subs.filter(s => s.id!==subId)});
   };
 
-  const delRK = (subId, rk) => {
+  const delRK = async (subId, rk) => {
     if (!window.confirm(`Regelkast "${rk}" verwijderen?`)) return;
-    setPrjs(p => p.map(prj => ({
-      ...prj, subs:prj.subs.map(s => s.id===subId ? {...s, rks:s.rks.filter(r => r!==rk)} : s)
-    })));
+    for (const prj of prjs) {
+      const sub = prj.subs.find(s => s.id===subId);
+      if (sub) {
+        await upsertPrj({...prj, subs:prj.subs.map(s => s.id===subId ? {...s, rks:s.rks.filter(r=>r!==rk)} : s)});
+        break;
+      }
+    }
   };
 
   const csvPrjs = () => {
@@ -408,7 +583,7 @@ function PrjPage({ prjs, setPrjs }) {
         React.createElement("button", { onClick:()=>{ setAdding({type:"prj"}); setVal(""); setVal2(""); }, style:btn() }, "+ Nieuw project")
       )
     }),
-    adding?.type==="prj" && React.createElement("div", { style:card({ border:`1px solid ${C.acc}50`, marginBottom:20 })},
+    adding?.type==="prj" && React.createElement("div", { style:card({ border:`1px solid ${C.acc}40`, marginBottom:20 })},
       React.createElement(SH, { t:"Nieuw project" }),
       React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }},
         React.createElement(FI, { label:"Projectnummer *", value:val,  onChange:e=>setVal(e.target.value),  placeholder:"PRJ-2024-020" }),
@@ -422,8 +597,8 @@ function PrjPage({ prjs, setPrjs }) {
     prjs.map(prj => React.createElement("div", { key:prj.id, style:card() },
       editPrj?.id===prj.id
         ? React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr auto", gap:10, alignItems:"end", marginBottom:14 }},
-            React.createElement(FI, { label:"Projectnummer *", value:editPrj.nr,   onChange:e=>setEditPrj(p=>({...p,nr:e.target.value})),   placeholder:"PRJ-..." }),
-            React.createElement(FI, { label:"Projectnaam",     value:editPrj.naam, onChange:e=>setEditPrj(p=>({...p,naam:e.target.value})), placeholder:"Naam" }),
+            React.createElement(FI, { label:"Projectnummer *", value:editPrj.nr,   onChange:e=>setEditPrj(p=>({...p,nr:e.target.value})) }),
+            React.createElement(FI, { label:"Projectnaam",     value:editPrj.naam, onChange:e=>setEditPrj(p=>({...p,naam:e.target.value})) }),
             React.createElement("div", { style:{ paddingTop:18, display:"flex", gap:6 }},
               React.createElement("button", { onClick:saveEditPrj, style:{...btn(), padding:"7px 12px"} }, "✓"),
               React.createElement("button", { onClick:()=>setEditPrj(null), style:{...btn(C.mut,false), padding:"7px 12px"} }, "✕")
@@ -432,9 +607,9 @@ function PrjPage({ prjs, setPrjs }) {
         : React.createElement("div", { style:{ display:"flex", alignItems:"center", gap:12, paddingBottom:exp[prj.id]?14:0, marginBottom:exp[prj.id]?14:0, borderBottom:exp[prj.id]?`1px solid ${C.bdr}`:"none" }},
             React.createElement("span", { onClick:()=>toggle(prj.id), style:{ color:C.acc, fontFamily:"monospace", fontSize:12, cursor:"pointer", userSelect:"none" }}, exp[prj.id]?"▾":"▸"),
             React.createElement("div", { onClick:()=>toggle(prj.id), style:{ display:"flex", alignItems:"center", gap:10, flex:1, cursor:"pointer" }},
-              React.createElement("span", { style:{ fontFamily:"monospace", fontWeight:800, color:C.acc, fontSize:13 }}, prj.nr),
+              React.createElement("span", { style:{ fontWeight:800, color:C.acc, fontSize:13 }}, prj.nr),
               React.createElement("span", { style:{ fontWeight:600 }}, prj.naam),
-              React.createElement("span", { style:{ marginLeft:8, background:C.sur2, color:C.mut, border:`1px solid ${C.bdr}`, borderRadius:4, padding:"1px 7px", fontSize:11, fontFamily:"monospace" }},
+              React.createElement("span", { style:{ marginLeft:8, background:C.sur2, color:C.mut, border:`1px solid ${C.bdr}`, borderRadius:3, padding:"1px 7px", fontSize:11 }},
                 `${prj.subs.length} subproject${prj.subs.length!==1?"en":""}`)
             ),
             React.createElement("div", { style:{ display:"flex", gap:5 }},
@@ -443,10 +618,10 @@ function PrjPage({ prjs, setPrjs }) {
             )
           ),
       exp[prj.id] && React.createElement("div", null,
-        prj.subs.map(sub => React.createElement("div", { key:sub.id, style:{ background:C.bg, border:`1px solid ${C.bdr}`, borderRadius:6, padding:"10px 14px", marginBottom:8 }},
+        prj.subs.map(sub => React.createElement("div", { key:sub.id, style:{ background:C.bg, border:`1px solid ${C.bdr}`, borderRadius:4, padding:"10px 14px", marginBottom:6 }},
           editSub?.subId===sub.id
             ? React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr auto", gap:10, alignItems:"end", marginBottom:8 }},
-                React.createElement(FI, { label:"Subproject naam *", value:editSub.naam, onChange:e=>setEditSub(p=>({...p,naam:e.target.value})), placeholder:"Naam" }),
+                React.createElement(FI, { label:"Subproject naam *", value:editSub.naam, onChange:e=>setEditSub(p=>({...p,naam:e.target.value})) }),
                 React.createElement("div", { style:{ paddingTop:18, display:"flex", gap:6 }},
                   React.createElement("button", { onClick:saveEditSub, style:{...btn(), padding:"7px 12px"} }, "✓"),
                   React.createElement("button", { onClick:()=>setEditSub(null), style:{...btn(C.mut,false), padding:"7px 12px"} }, "✕")
@@ -463,9 +638,9 @@ function PrjPage({ prjs, setPrjs }) {
                 )
               ),
           (exp[sub.id] || (adding?.type==="rk" && adding.subId===sub.id)) && React.createElement("div", { style:{ display:"flex", flexWrap:"wrap", gap:6, marginTop:10 }},
-            sub.rks.map(rk => React.createElement("div", { key:rk, style:{ display:"flex", alignItems:"center", gap:4, background:"rgba(59,130,246,.12)", border:"1px solid rgba(59,130,246,.25)", borderRadius:4, padding:"2px 6px 2px 10px" }},
-              React.createElement("span", { style:{ fontSize:12, fontFamily:"monospace", fontWeight:600, color:C.blue }}, rk),
-              React.createElement("button", { onClick:()=>delRK(sub.id, rk), style:{ background:"none", border:"none", color:"#ef444480", cursor:"pointer", fontSize:12, padding:"0 2px", lineHeight:1, fontWeight:700 }}, "×")
+            sub.rks.map(rk => React.createElement("div", { key:rk, style:{ display:"flex", alignItems:"center", gap:4, background:"rgba(59,130,246,.1)", border:"1px solid rgba(59,130,246,.2)", borderRadius:3, padding:"2px 6px 2px 10px" }},
+              React.createElement("span", { style:{ fontSize:12, fontWeight:700, color:C.blue }}, rk),
+              React.createElement("button", { onClick:()=>delRK(sub.id, rk), style:{ background:"none", border:"none", color:"#ef444470", cursor:"pointer", fontSize:12, padding:"0 2px", lineHeight:1, fontWeight:700 }}, "×")
             )),
             adding?.type==="rk" && adding.subId===sub.id && React.createElement("div", { style:{ display:"flex", gap:6, alignItems:"center" }},
               React.createElement("input", { style:inp({width:110}), placeholder:"RK-xxx", value:val, onChange:e=>setVal(e.target.value), onKeyDown:e=>e.key==="Enter"&&doAdd(), autoFocus:true }),
@@ -487,7 +662,7 @@ function PrjPage({ prjs, setPrjs }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   PAGINA: BESTELLINGEN
+   BESTELLINGEN
 ═══════════════════════════════════════════════════════════════ */
 const STEPS = ["offerte","bestelling","bevestigd","geleverd"];
 const NEXT_FIELDS = {
@@ -517,10 +692,10 @@ function ArtTable({ arts, onDel }) {
       )
     ),
     React.createElement("tbody", null,
-      arts.map((a,i) => React.createElement("tr", { key:a.id, style:{ borderBottom:`1px solid ${C.sur2}` }},
-        React.createElement("td", { style:{ padding:"7px 10px", fontFamily:"monospace", fontWeight:600 }}, a.merk),
-        React.createElement("td", { style:{ padding:"7px 10px", fontFamily:"monospace" }}, a.type),
-        React.createElement("td", { style:{ padding:"7px 10px", fontFamily:"monospace", textAlign:"center" }}, a.n),
+      arts.map((a,i) => React.createElement("tr", { key:a.id||i, style:{ borderBottom:`1px solid ${C.sur2}` }},
+        React.createElement("td", { style:{ padding:"7px 10px", fontWeight:700 }}, a.merk),
+        React.createElement("td", { style:{ padding:"7px 10px" }}, a.type),
+        React.createElement("td", { style:{ padding:"7px 10px", textAlign:"center" }}, a.n),
         React.createElement("td", { style:{ padding:"7px 10px", color:"#94a3b8", fontSize:12 }}, a.opm||"—"),
         onDel && React.createElement("td", { style:{ padding:"7px 10px", textAlign:"right" }},
           React.createElement("button", { onClick:()=>onDel(i), style:{...ibtn(C.red), padding:"2px 8px"} }, "✕")
@@ -531,8 +706,8 @@ function ArtTable({ arts, onDel }) {
 }
 
 function ArtAddRow({ art, setArt, onAdd }) {
-  return React.createElement("div", { style:{ background:C.bg, border:`1px dashed ${C.bdr}`, borderRadius:6, padding:14 }},
-    React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 60px 1fr auto", gap:10, alignItems:"end" }},
+  return React.createElement("div", { style:{ background:C.bg, border:`1px dashed ${C.bdr}`, borderRadius:4, padding:14 }},
+    React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 70px 1fr auto", gap:10, alignItems:"end" }},
       React.createElement(FI, { label:"Merk *",    value:art.merk, onChange:e=>setArt(p=>({...p,merk:e.target.value})), placeholder:"Belimo" }),
       React.createElement(FI, { label:"Type *",    value:art.type, onChange:e=>setArt(p=>({...p,type:e.target.value})), placeholder:"EV015" }),
       React.createElement(FI, { label:"Aantal",    type:"number", min:"1", value:art.n, onChange:e=>setArt(p=>({...p,n:e.target.value})) }),
@@ -542,7 +717,7 @@ function ArtAddRow({ art, setArt, onAdd }) {
   );
 }
 
-function BestPage({ levs, prjs, bests, setBests, allRK }) {
+function BestPage({ levs, prjs, bests, upsertBest, deleteBest }) {
   const [exp,       setExp]       = useState("b1");
   const [wizard,    setWizard]    = useState(null);
   const [nextForm,  setNextForm]  = useState({});
@@ -563,27 +738,25 @@ function BestPage({ levs, prjs, bests, setBests, allRK }) {
                : [{ v:"", l:"— Kies eerst project —" }];
   };
 
-  const doNext = bestId => {
+  const doNext = async bestId => {
     const b = bests.find(x => x.id===bestId);
-    const idx = STEPS.indexOf(b.status);
-    const ns  = STEPS[idx+1];
+    const ns = STEPS[STEPS.indexOf(b.status)+1];
     if (!ns) return;
-    setBests(p => p.map(x => x.id===bestId ? {...x,...nextForm,status:ns} : x));
+    await upsertBest({...b,...nextForm,status:ns});
     setWizard(null); setNextForm({});
   };
 
   const startNew = heeftOff => {
-    setNewBest({ levId:"", prjId:"", subId:"", heeftOff, offNr:"", offDat:"", ioNr:"", bestDat:new Date().toISOString().slice(0,10) });
+    setNewBest({ levId:"", prjId:"", subId:"", heeftOff, offNr:"", offDat:"", ioNr:"", bestDat:new Date().toISOString().slice(0,10),
+      obNr:"", levBestNr:"", verwLev:"", pbNr:"", levDat:"" });
     setTempArts([]); setNewMode(true);
   };
 
-  const saveNew = () => {
+  const saveNew = async () => {
     if (!newBest?.levId||!newBest?.prjId||tempArts.length===0) return;
     const b = { id:`b-${Date.now()}`, ...newBest,
-      status:newBest.heeftOff?"offerte":"bestelling",
-      obNr:"", levBestNr:"", verwLev:"", pbNr:"", levDat:"",
-      arts:tempArts };
-    setBests(p => [b,...p]);
+      status:newBest.heeftOff?"offerte":"bestelling", arts:tempArts };
+    await upsertBest(b);
     setNewMode(false); setNewBest(null); setTempArts([]);
   };
 
@@ -594,21 +767,15 @@ function BestPage({ levs, prjs, bests, setBests, allRK }) {
     setEditMode(true);
   };
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!editBest?.levId||!editBest?.prjId||editArts.length===0) return;
-    setBests(p => p.map(b => b.id===editBest.id ? {...editBest, arts:editArts} : b));
+    await upsertBest({...editBest, arts:editArts});
     setEditMode(false); setEditBest(null); setEditArts([]);
   };
 
-  const addEditArt = () => {
-    if (!editNewArt.merk||!editNewArt.type) return;
-    setEditArts(p => [...p, {id:`na-${Date.now()}`, ...editNewArt, n:Number(editNewArt.n)}]);
-    setEditNewArt({ merk:"", type:"", n:1, opm:"" });
-  };
-
-  const deleteBest = id => {
+  const doDeleteBest = async id => {
     if (!window.confirm('Bestelling verwijderen?')) return;
-    setBests(p => p.filter(b => b.id!==id));
+    await deleteBest(id);
   };
 
   const csvBests = () => {
@@ -616,67 +783,60 @@ function BestPage({ levs, prjs, bests, setBests, allRK }) {
     bests.forEach(b => {
       const lev = levs.find(l=>l.id===b.levId);
       const prj = prjs.find(p=>p.id===b.prjId);
-      const sub = prjs.find(p=>p.id===b.prjId)?.subs.find(s=>s.id===b.subId);
-      (b.arts.length>0 ? b.arts : [{}]).forEach(a => {
-        rows.push([
-          b.status, lev?.naam||'', prj?.nr||'', sub?.naam||'',
-          b.offNr||'', b.offDat||'', b.ioNr||'', b.bestDat||'',
-          b.obNr||'', b.levBestNr||'', b.verwLev||'', b.pbNr||'', b.levDat||'',
-          a.merk||'', a.type||'', a.n||'', a.opm||''
-        ]);
+      const sub = prj?.subs.find(s=>s.id===b.subId);
+      (b.arts.length>0?b.arts:[{}]).forEach(a => {
+        rows.push([b.status,lev?.naam||'',prj?.nr||'',sub?.naam||'',b.offNr||'',b.offDat||'',b.ioNr||'',b.bestDat||'',b.obNr||'',b.levBestNr||'',b.verwLev||'',b.pbNr||'',b.levDat||'',a.merk||'',a.type||'',a.n||'',a.opm||'']);
       });
     });
-    downloadCSV('bestellingen.csv',
-      ['Status','Leverancier','Project','Subproject','Offertenr','Offertedatum','IO Nr','Besteldatum','OB Nr','Lev.bestelnr','Verw.levering','Pakbonnr','Leverdatum','Merk','Type','Aantal','Opmerking'],
-      rows
-    );
+    downloadCSV('bestellingen.csv',['Status','Leverancier','Project','Subproject','Offertenr','Offertedatum','IO Nr','Besteldatum','OB Nr','Lev.bestelnr','Verw.levering','Pakbonnr','Leverdatum','Merk','Type','Aantal','Opmerking'],rows);
   };
 
   const getLev = id => levs.find(l=>l.id===id);
   const getPrj = id => prjs.find(p=>p.id===id);
-  const getSub = (prjId,subId) => prjs.find(p=>p.id===prjId)?.subs.find(s=>s.id===subId);
+  const getSub = (pId,sId) => prjs.find(p=>p.id===pId)?.subs.find(s=>s.id===sId);
 
   const sorted = [...bests].sort((a,b) => {
-    const order={geleverd:0,bevestigd:1,bestelling:2,offerte:3};
-    return (order[a.status]??9)-(order[b.status]??9);
+    const o={geleverd:0,bevestigd:1,bestelling:2,offerte:3};
+    return (o[a.status]??9)-(o[b.status]??9);
   });
 
+  // Wizard form component
   const WizardForm = ({ mode, best, setBest, arts, setArts, newArtS, setNewArtS, onSave, onCancel }) =>
     React.createElement("div", { style:{ maxWidth:960 }},
       React.createElement("div", { style:{ display:"flex", alignItems:"center", gap:12, marginBottom:20 }},
         React.createElement("button", { onClick:onCancel, style:btn(C.mut,false) }, "← Terug"),
-        React.createElement("div", { style:{ fontFamily:"monospace", fontWeight:800, color:C.acc, fontSize:13 }},
-          mode==="edit" ? `Bestelling bewerken` : best.heeftOff ? "Nieuwe offerte" : "Nieuwe bestelling")
+        React.createElement("div", { style:{ fontWeight:800, color:C.acc, fontSize:13 }},
+          mode==="edit" ? "Bestelling bewerken" : best.heeftOff ? "Nieuwe offerte" : "Nieuwe bestelling")
       ),
       React.createElement("div", { style:card() },
         React.createElement(SH, { t:"Gegevens" }),
         React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:14, marginBottom:14 }},
-          React.createElement(FS, { label:"Leverancier *", opts:levOpts, value:best.levId, onChange:e=>setBest(p=>({...p,levId:e.target.value})) }),
-          React.createElement(FS, { label:"Project *",     opts:prjOpts, value:best.prjId, onChange:e=>setBest(p=>({...p,prjId:e.target.value,subId:""})) }),
-          React.createElement(FS, { label:"Subproject",    opts:subOpts(best.prjId), value:best.subId, onChange:e=>setBest(p=>({...p,subId:e.target.value})) })
+          React.createElement(FS, { label:"Leverancier *", opts:levOpts, value:best.levId||'', onChange:e=>setBest(p=>({...p,levId:e.target.value})) }),
+          React.createElement(FS, { label:"Project *",     opts:prjOpts, value:best.prjId||'', onChange:e=>setBest(p=>({...p,prjId:e.target.value,subId:""})) }),
+          React.createElement(FS, { label:"Subproject",    opts:subOpts(best.prjId), value:best.subId||'', onChange:e=>setBest(p=>({...p,subId:e.target.value})) })
         ),
-        React.createElement("div", { style:{ marginBottom:10 }},
+        React.createElement("div", { style:{ marginBottom:12 }},
           React.createElement("label", { style:{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontSize:13 }},
-            React.createElement("input", { type:"checkbox", checked:best.heeftOff, onChange:e=>setBest(p=>({...p,heeftOff:e.target.checked})), style:{ accentColor:C.acc, width:14, height:14 }}),
+            React.createElement("input", { type:"checkbox", checked:!!best.heeftOff, onChange:e=>setBest(p=>({...p,heeftOff:e.target.checked})), style:{ accentColor:C.acc, width:14, height:14 }}),
             React.createElement("span", { style:{ color:C.mut }}, "Heeft offerte")
           )
         ),
         best.heeftOff && React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }},
-          React.createElement(FI, { label:"Offertenummer", value:best.offNr,  onChange:e=>setBest(p=>({...p,offNr:e.target.value})),  placeholder:"OFF-2024-..." }),
-          React.createElement(FI, { label:"Offertedatum",  type:"date", value:best.offDat, onChange:e=>setBest(p=>({...p,offDat:e.target.value})) })
+          React.createElement(FI, { label:"Offertenummer", value:best.offNr||'',  onChange:e=>setBest(p=>({...p,offNr:e.target.value})),  placeholder:"OFF-2024-..." }),
+          React.createElement(FI, { label:"Offertedatum",  type:"date", value:best.offDat||'', onChange:e=>setBest(p=>({...p,offDat:e.target.value})) })
         ),
         React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }},
-          React.createElement(FI, { label:"IO Nummer",  value:best.ioNr,   onChange:e=>setBest(p=>({...p,ioNr:e.target.value})),   placeholder:"IO-2024-..." }),
-          React.createElement(FI, { label:"Besteldatum", type:"date", value:best.bestDat, onChange:e=>setBest(p=>({...p,bestDat:e.target.value})) })
+          React.createElement(FI, { label:"IO Nummer",  value:best.ioNr||'',   onChange:e=>setBest(p=>({...p,ioNr:e.target.value})),   placeholder:"IO-2024-..." }),
+          React.createElement(FI, { label:"Besteldatum", type:"date", value:best.bestDat||'', onChange:e=>setBest(p=>({...p,bestDat:e.target.value})) })
         ),
         React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:14, marginBottom:14 }},
-          React.createElement(FI, { label:"Orderbevestigingsnr.", value:best.obNr,      onChange:e=>setBest(p=>({...p,obNr:e.target.value})),      placeholder:"OB-..." }),
-          React.createElement(FI, { label:"Bestelnr. leverancier",value:best.levBestNr, onChange:e=>setBest(p=>({...p,levBestNr:e.target.value})), placeholder:"BES-..." }),
-          React.createElement(FI, { label:"Verwachte leverdatum", type:"date", value:best.verwLev, onChange:e=>setBest(p=>({...p,verwLev:e.target.value})) })
+          React.createElement(FI, { label:"Orderbevestigingsnr.", value:best.obNr||'',      onChange:e=>setBest(p=>({...p,obNr:e.target.value})),      placeholder:"OB-..." }),
+          React.createElement(FI, { label:"Bestelnr. leverancier",value:best.levBestNr||'', onChange:e=>setBest(p=>({...p,levBestNr:e.target.value})), placeholder:"BES-..." }),
+          React.createElement(FI, { label:"Verwachte leverdatum", type:"date", value:best.verwLev||'', onChange:e=>setBest(p=>({...p,verwLev:e.target.value})) })
         ),
         React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }},
-          React.createElement(FI, { label:"Pakbonnummer", value:best.pbNr,  onChange:e=>setBest(p=>({...p,pbNr:e.target.value})),  placeholder:"PB-..." }),
-          React.createElement(FI, { label:"Leverdatum",   type:"date", value:best.levDat, onChange:e=>setBest(p=>({...p,levDat:e.target.value})) })
+          React.createElement(FI, { label:"Pakbonnummer", value:best.pbNr||'',  onChange:e=>setBest(p=>({...p,pbNr:e.target.value})),  placeholder:"PB-..." }),
+          React.createElement(FI, { label:"Leverdatum",   type:"date", value:best.levDat||'', onChange:e=>setBest(p=>({...p,levDat:e.target.value})) })
         )
       ),
       React.createElement("div", { style:card() },
@@ -728,22 +888,22 @@ function BestPage({ levs, prjs, bests, setBests, allRK }) {
           React.createElement("span", { onClick:()=>setExp(isOpen?null:b.id), style:{ color:C.acc, fontSize:11, cursor:"pointer", userSelect:"none" }}, isOpen?"▾":"▸"),
           React.createElement("div", { onClick:()=>setExp(isOpen?null:b.id), style:{ display:"flex", alignItems:"center", gap:10, flex:1, cursor:"pointer", overflow:"hidden" }},
             React.createElement(Bdg, { v:b.status }),
-            b.ioNr  && React.createElement("span", { style:{ fontFamily:"monospace", fontWeight:800, color:C.acc, fontSize:13 }}, b.ioNr),
-            !b.ioNr&&b.offNr && React.createElement("span", { style:{ fontFamily:"monospace", fontWeight:700, color:"#a855f7", fontSize:13 }}, b.offNr),
+            b.ioNr  && React.createElement("span", { style:{ fontWeight:800, color:C.acc, fontSize:13 }}, b.ioNr),
+            !b.ioNr&&b.offNr && React.createElement("span", { style:{ fontWeight:700, color:"#a855f7", fontSize:13 }}, b.offNr),
             lev&&React.createElement("span", { style:{ fontSize:13 }}, lev.naam),
-            prj&&React.createElement("span", { style:{ background:"rgba(59,130,246,.1)", color:C.blue, border:"1px solid rgba(59,130,246,.2)", borderRadius:4, fontSize:11, fontWeight:700, padding:"2px 8px", fontFamily:"monospace" }}, prj.nr),
+            prj&&React.createElement("span", { style:{ background:"rgba(59,130,246,.1)", color:C.blue, border:"1px solid rgba(59,130,246,.2)", borderRadius:3, fontSize:11, fontWeight:700, padding:"2px 8px" }}, prj.nr),
             sub&&React.createElement("span", { style:{ fontSize:12, color:C.mut }}, sub.naam),
             React.createElement("span", { style:{ fontSize:11, color:C.mut, marginLeft:"auto" }}, `${b.arts.length} art.`)
           ),
           React.createElement("div", { style:{ display:"flex", gap:5, flexShrink:0 }},
             React.createElement("button", { onClick:()=>startEdit(b), style:ibtn(C.blue) }, "✏"),
-            React.createElement("button", { onClick:()=>deleteBest(b.id), style:ibtn(C.red) }, "🗑")
+            React.createElement("button", { onClick:()=>doDeleteBest(b.id), style:ibtn(C.red) }, "🗑")
           )
         ),
         isOpen && React.createElement(React.Fragment, null,
           React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:16 }},
             [
-              b.heeftOff&&b.offNr    && { l:"Offerte",          v:`${b.offNr} (${b.offDat})`, c:"#a855f7" },
+              b.heeftOff&&b.offNr    && { l:"Offerte",          v:`${b.offNr}${b.offDat?' ('+b.offDat+')':''}`, c:"#a855f7" },
               b.ioNr                 && { l:"IO Nummer",         v:b.ioNr,                     c:C.acc },
               b.bestDat&&b.ioNr      && { l:"Besteldatum",       v:b.bestDat },
               b.obNr                 && { l:"Orderbevestiging",   v:b.obNr },
@@ -758,15 +918,15 @@ function BestPage({ levs, prjs, bests, setBests, allRK }) {
             STEPS.map((st,i) => {
               const done=STEPS.indexOf(b.status)>=i;
               return React.createElement("div", { key:st, style:{ display:"flex", alignItems:"center", gap:6 }},
-                React.createElement("div", { style:{ width:8, height:8, borderRadius:"50%", background:done?ST[st].c:C.bdr, boxShadow:done?`0 0 6px ${ST[st].c}`:"none" }}),
-                React.createElement("span", { style:{ fontSize:11, color:done?ST[st].c:C.mut, fontWeight:done?600:400 }}, ST[st].l),
+                React.createElement("div", { style:{ width:7, height:7, borderRadius:"50%", background:done?ST[st].c:C.bdr, boxShadow:done?`0 0 5px ${ST[st].c}`:"none" }}),
+                React.createElement("span", { style:{ fontSize:11, color:done?ST[st].c:C.mut, fontWeight:done?700:400 }}, ST[st].l),
                 i<STEPS.length-1&&React.createElement("span", { style:{ color:C.bdr, margin:"0 2px" }}, "→")
               );
             })
           ),
           ns&&!isWiz&&React.createElement("button", { onClick:()=>{setWizard({bestId:b.id});setNextForm({});}, style:{...btn(), marginTop:12} },
             `→ Zet door naar ${ST[ns]?.l}`),
-          isWiz&&React.createElement("div", { style:{ background:C.bg, border:`1px solid ${C.acc}50`, borderRadius:6, padding:16, marginTop:8 }},
+          isWiz&&React.createElement("div", { style:{ background:C.bg, border:`1px solid ${C.acc}40`, borderRadius:4, padding:16, marginTop:8 }},
             React.createElement("div", { style:{ fontSize:11, color:C.acc, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", marginBottom:14 }},
               `Status wijzigen → ${ST[ns]?.l}`),
             React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:14 }},
@@ -784,14 +944,15 @@ function BestPage({ levs, prjs, bests, setBests, allRK }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   PAGINA: ASSETCODERING
+   ASSETCODERING — merged stock
 ═══════════════════════════════════════════════════════════════ */
-function AssetPage({ assets, setAssets, allRK, availArts, lastRK, setLastRK }) {
-  const [addForm,     setAddForm]     = useState({ opcode:"", artId:"" });
+function AssetPage({ assets, upsertAsset, deleteAsset, assetStore, allRK, availArts, lastRK, setLastRK }) {
+  const [addForm,     setAddForm]     = useState({ opcode:"", artKey:"" });
   const [editAssetId, setEditAssetId] = useState(null);
   const [editOpc,     setEditOpc]     = useState("");
 
   const rkOpts  = [{ v:"", l:"— Kies regelkast —" }, ...allRK];
+  // artOpts now uses merged key
   const artOpts = [
     { v:"", l:"— Kies artikel —" },
     ...availArts.map(a => ({ v:a.id, l:`${a.merk} ${a.type}  (${a.remaining}× beschikbaar)` }))
@@ -799,32 +960,29 @@ function AssetPage({ assets, setAssets, allRK, availArts, lastRK, setLastRK }) {
 
   const rkAssets = assets.filter(a => a.rk===lastRK);
 
-  const addAsset = () => {
-    if (!lastRK||!addForm.opcode||!addForm.artId) return;
-    const art = availArts.find(a => a.id===addForm.artId);
+  const addAsset = async () => {
+    if (!lastRK||!addForm.opcode||!addForm.artKey) return;
+    const art = availArts.find(a => a.id===addForm.artKey);
     if (!art) return;
-    setAssets(p => [...p, {
+    const item = {
       id:`as-${Date.now()}`, rk:lastRK, opcode:addForm.opcode.toUpperCase(),
-      artId:addForm.artId, merk:art.merk, type:art.type,
+      artId:art.artIds[0]||'', merk:art.merk, type:art.type,
       st:"beschikbaar", uitDat:"", aan:"", firma:""
-    }]);
-    setAddForm({ opcode:"", artId:"" });
+    };
+    await upsertAsset(item);
+    setAddForm({ opcode:"", artKey:"" });
   };
 
-  const startEditAsset = a => {
-    setEditAssetId(a.id);
-    setEditOpc(a.opcode);
-  };
-
-  const saveEditAsset = () => {
+  const saveEditAsset = async () => {
     if (!editOpc) return;
-    setAssets(p => p.map(a => a.id===editAssetId ? {...a, opcode:editOpc.toUpperCase()} : a));
+    const a = assets.find(x => x.id===editAssetId);
+    await upsertAsset({...a, opcode:editOpc.toUpperCase()});
     setEditAssetId(null);
   };
 
-  const delAsset = id => {
+  const delAsset = async id => {
     if (!window.confirm('Asset verwijderen?')) return;
-    setAssets(p => p.filter(a => a.id!==id));
+    await deleteAsset(id);
   };
 
   const csvAssets = () => downloadCSV('assets.csv',
@@ -834,32 +992,32 @@ function AssetPage({ assets, setAssets, allRK, availArts, lastRK, setLastRK }) {
 
   return React.createElement("div", { style:{ maxWidth:960 }},
     React.createElement(PH, { title:"Assetcodering", action: React.createElement(CsvBtn, { onClick:csvAssets }) }),
-    React.createElement("div", { style:card({ border:`1px solid ${C.acc}40` }) },
-      React.createElement("div", { style:{ fontSize:11, color:C.acc, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", marginBottom:14 }}, "Nieuwe codering aanmaken"),
+    React.createElement("div", { style:card({ border:`1px solid ${C.acc}30` }) },
+      React.createElement("div", { style:{ fontSize:10, color:C.acc, fontWeight:700, textTransform:"uppercase", letterSpacing:".08em", marginBottom:14 }}, "Nieuwe codering aanmaken"),
       React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr auto", gap:12, alignItems:"end" }},
         React.createElement(FS, { label:"Regelkast (wordt onthouden)", opts:rkOpts, value:lastRK, onChange:e=>setLastRK(e.target.value) }),
         React.createElement(FI, { label:"Opnemercode *", value:addForm.opcode, onChange:e=>setAddForm(p=>({...p,opcode:e.target.value})), placeholder:"bijv. FT-103" }),
-        React.createElement(FS, { label:"Artikel (uit geleverde bestellingen)", opts:artOpts, value:addForm.artId, onChange:e=>setAddForm(p=>({...p,artId:e.target.value})) }),
+        React.createElement(FS, { label:"Artikel", opts:artOpts, value:addForm.artKey, onChange:e=>setAddForm(p=>({...p,artKey:e.target.value})) }),
         React.createElement("div", { style:{paddingTop:18} }, React.createElement("button", { onClick:addAsset, style:btn() }, "+ Toevoegen"))
       )
     ),
     availArts.length>0 && React.createElement("div", { style:card() },
-      React.createElement(SH, { t:"Beschikbare voorraad (niet volledig gecodeerd)" }),
+      React.createElement(SH, { t:"Beschikbare voorraad (samengeteld per type)" }),
       React.createElement("div", { style:{ display:"flex", flexWrap:"wrap", gap:8 }},
-        availArts.map(a => React.createElement("div", { key:a.id, style:{ background:C.bg, border:`1px solid ${C.bdr}`, borderRadius:6, padding:"8px 12px", minWidth:180 }},
-          React.createElement("div", { style:{ fontFamily:"monospace", fontWeight:700, fontSize:13 }}, `${a.merk} ${a.type}`),
-          React.createElement("div", { style:{ fontSize:11, color:C.mut, marginTop:3 }},
+        availArts.map(a => React.createElement("div", { key:a.id, style:{ background:C.bg, border:`1px solid ${C.bdr}`, borderRadius:4, padding:"10px 14px", minWidth:200 }},
+          React.createElement("div", { style:{ fontWeight:700, fontSize:13, marginBottom:4 }}, `${a.merk} ${a.type}`),
+          React.createElement("div", { style:{ fontSize:11, color:C.mut, marginBottom:6 }},
             React.createElement("span", { style:{ color:C.grn, fontWeight:700 }}, `${a.remaining}×`),
-            ` beschikbaar · ${a.coded} van ${a.n} gecodeerd`
+            ` beschikbaar · ${a.coded} van ${a.totalN} gecodeerd`
           ),
-          React.createElement("div", { style:{ marginTop:4, height:3, background:C.bdr, borderRadius:2 }},
-            React.createElement("div", { style:{ height:"100%", background:C.grn, borderRadius:2, width:`${Math.min((a.coded/a.n)*100,100)}%` }})
+          React.createElement("div", { style:{ height:3, background:C.bdr, borderRadius:2 }},
+            React.createElement("div", { style:{ height:"100%", background:C.grn, borderRadius:2, width:`${Math.min((a.coded/a.totalN)*100,100)}%`, transition:"width .3s" }})
           )
         ))
       )
     ),
-    availArts.length===0 && React.createElement("div", { style:card({ border:`1px solid rgba(245,158,11,.2)`, padding:16 }) },
-      React.createElement("span", { style:{ color:C.acc, fontSize:12 }}, "⚠ Geen geleverde bestellingen met beschikbare artikelen. Zet een bestelling op \"Geleverd\" om hier artikelen te kunnen coderen.")
+    availArts.length===0 && React.createElement("div", { style:card({ border:`1px solid ${C.acc}30`, padding:14 }) },
+      React.createElement("span", { style:{ color:C.acc, fontSize:12 }}, "⚠ Geen geleverde bestellingen met beschikbare artikelen.")
     ),
     React.createElement("div", { style:card() },
       React.createElement(SH, { t:`Assets — ${lastRK||"geen regelkast gekozen"} (${rkAssets.length})` }),
@@ -875,7 +1033,7 @@ function AssetPage({ assets, setAssets, allRK, availArts, lastRK, setLastRK }) {
             ),
             React.createElement("tbody", null,
               rkAssets.map((a,i) => editAssetId===a.id
-                ? React.createElement("tr", { key:a.id, style:{ borderBottom:`1px solid ${C.sur2}`, background:"rgba(245,158,11,.06)" }},
+                ? React.createElement("tr", { key:a.id, style:{ borderBottom:`1px solid ${C.sur2}`, background:"rgba(245,158,11,.04)" }},
                     React.createElement("td", { style:{ padding:"6px 10px" }},
                       React.createElement("div", { style:{ display:"flex", gap:6, alignItems:"center" }},
                         React.createElement("input", { style:inp({width:100, padding:"4px 8px"}), value:editOpc, onChange:e=>setEditOpc(e.target.value.toUpperCase()), autoFocus:true, onKeyDown:e=>e.key==="Enter"&&saveEditAsset() }),
@@ -883,18 +1041,18 @@ function AssetPage({ assets, setAssets, allRK, availArts, lastRK, setLastRK }) {
                         React.createElement("button", { onClick:()=>setEditAssetId(null), style:{...btn(C.mut,false), padding:"4px 10px", fontSize:11} }, "✕")
                       )
                     ),
-                    React.createElement("td", { style:{ padding:"6px 10px", fontFamily:"monospace", fontWeight:600 }}, a.merk),
-                    React.createElement("td", { style:{ padding:"6px 10px", fontFamily:"monospace" }}, a.type),
+                    React.createElement("td", { style:{ padding:"6px 10px", fontWeight:700 }}, a.merk),
+                    React.createElement("td", { style:{ padding:"6px 10px" }}, a.type),
                     React.createElement("td", { style:{ padding:"6px 10px" }}, React.createElement(Bdg, { v:a.st, sm:true })),
                     React.createElement("td", null)
                   )
                 : React.createElement("tr", { key:a.id, style:{ borderBottom:`1px solid ${C.sur2}`, background:i%2?"rgba(255,255,255,.01)":"transparent" }},
-                    React.createElement("td", { style:{ padding:"8px 10px", fontFamily:"monospace", fontWeight:700, color:C.acc }}, a.opcode),
-                    React.createElement("td", { style:{ padding:"8px 10px", fontFamily:"monospace", fontWeight:600 }}, a.merk),
-                    React.createElement("td", { style:{ padding:"8px 10px", fontFamily:"monospace" }}, a.type),
+                    React.createElement("td", { style:{ padding:"8px 10px", fontWeight:700, color:C.acc }}, a.opcode),
+                    React.createElement("td", { style:{ padding:"8px 10px", fontWeight:700 }}, a.merk),
+                    React.createElement("td", { style:{ padding:"8px 10px" }}, a.type),
                     React.createElement("td", { style:{ padding:"8px 10px" }}, React.createElement(Bdg, { v:a.st, sm:true })),
                     React.createElement("td", { style:{ padding:"8px 10px", textAlign:"right", whiteSpace:"nowrap" }},
-                      React.createElement("button", { onClick:()=>startEditAsset(a), style:{...ibtn(C.blue), marginRight:4} }, "✏"),
+                      React.createElement("button", { onClick:()=>{setEditAssetId(a.id);setEditOpc(a.opcode);}, style:{...ibtn(C.blue), marginRight:4} }, "✏"),
                       React.createElement("button", { onClick:()=>delAsset(a.id), style:ibtn(C.red) }, "🗑")
                     )
                   )
@@ -906,67 +1064,169 @@ function AssetPage({ assets, setAssets, allRK, availArts, lastRK, setLastRK }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   PAGINA: OVERZICHT
+   OVERZICHT — multi-select filter + artikel drill-down
 ═══════════════════════════════════════════════════════════════ */
-function OvzPage({ assets, prjs }) {
-  const [fPrj, setFPrj] = useState("");
-  const [fSub, setFSub] = useState("");
-  const [fRK,  setFRK]  = useState("");
+function OvzPage({ assets, prjs, bests }) {
+  const [selPrjs, setSelPrjs] = useState(new Set());
+  const [selSubs, setSelSubs] = useState(new Set());
+  const [selRKs,  setSelRKs]  = useState(new Set());
+  const [selArt,  setSelArt]  = useState("");
+  const [tab,     setTab]     = useState("types");
 
+  // All available RKs given prj/sub selection
   const scopeRKs = useMemo(() => {
-    const ps = fPrj ? prjs.filter(p=>p.id===fPrj) : prjs;
-    return ps.flatMap(p => (fSub?p.subs.filter(s=>s.id===fSub):p.subs).flatMap(s=>s.rks));
-  }, [prjs, fPrj, fSub]);
+    const ps = selPrjs.size > 0 ? prjs.filter(p => selPrjs.has(p.id)) : prjs;
+    return ps.flatMap(p => (selSubs.size > 0 ? p.subs.filter(s => selSubs.has(s.id)) : p.subs).flatMap(s => s.rks));
+  }, [prjs, selPrjs, selSubs]);
+
+  const allSubsForSel = useMemo(() => {
+    const ps = selPrjs.size > 0 ? prjs.filter(p => selPrjs.has(p.id)) : prjs;
+    return ps.flatMap(p => p.subs.map(s => ({...s, prjNr: p.nr})));
+  }, [prjs, selPrjs]);
 
   const filtered = useMemo(() => {
     return assets.filter(a => {
-      if (fRK) return a.rk===fRK;
-      if (scopeRKs.length>0) return scopeRKs.includes(a.rk);
-      return true;
+      const rkOk = selRKs.size > 0 ? selRKs.has(a.rk) : scopeRKs.includes(a.rk) || selPrjs.size===0;
+      const artOk = selArt ? `${a.merk}||${a.type}` === selArt : true;
+      return rkOk && artOk;
     });
-  }, [assets, fRK, scopeRKs]);
+  }, [assets, selRKs, scopeRKs, selPrjs, selArt]);
+
+  // All unique article types in system
+  const allArtTypes = useMemo(() => {
+    const m = {};
+    assets.forEach(a => { const k=`${a.merk}||${a.type}`; m[k]={merk:a.merk,type:a.type,k}; });
+    return Object.values(m).sort((a,b) => a.merk.localeCompare(b.merk));
+  }, [assets]);
 
   const grouped = useMemo(() => {
     const g = {};
     filtered.forEach(a => {
       const k=`${a.merk}||${a.type}`;
-      if (!g[k]) g[k]={ merk:a.merk, type:a.type, total:0, beschikbaar:0, uitgegeven:0, rks:new Set() };
-      g[k].total++; g[k][a.st]++; g[k].rks.add(a.rk);
+      if (!g[k]) g[k]={ merk:a.merk, type:a.type, total:0, beschikbaar:0, uitgegeven:0, rks:new Set(), items:[] };
+      g[k].total++; g[k][a.st]++; g[k].rks.add(a.rk); g[k].items.push(a);
     });
     return Object.values(g).map(x=>({...x, rks:[...x.rks]}));
   }, [filtered]);
 
-  const prjOpts = [{ v:"", l:"Alle projecten" }, ...prjs.map(p=>({v:p.id,l:`${p.nr} — ${p.naam}`}))];
-  const subOpts = fPrj
-    ? [{ v:"", l:"Alle subprojecten" }, ...(prjs.find(p=>p.id===fPrj)?.subs||[]).map(s=>({v:s.id,l:s.naam}))]
-    : [{ v:"", l:"— Kies eerst project —" }];
-  const rkOpts  = [{ v:"", l:"Alle regelkasten" }, ...scopeRKs.map(r=>({v:r,l:r}))];
+  // Drill-down: items for selected art
+  const drillItems = useMemo(() => {
+    if (!selArt) return [];
+    return filtered;
+  }, [filtered, selArt]);
+
+  const toggle = (set, setter, val) => {
+    setter(p => { const n = new Set(p); n.has(val) ? n.delete(val) : n.add(val); return n; });
+  };
 
   const csvOvz = () => downloadCSV('overzicht.csv',
     ['Merk','Type','Totaal','Beschikbaar','Uitgegeven','Regelkasten'],
     grouped.map(g => [g.merk, g.type, g.total, g.beschikbaar, g.uitgegeven, g.rks.join('; ')])
   );
 
+  const chipStyle = (active) => ({
+    background: active ? "rgba(245,158,11,.15)" : C.bg,
+    border: `1px solid ${active ? C.acc : C.bdr}`,
+    color: active ? C.acc : C.mut,
+    borderRadius:3, padding:"3px 10px", fontSize:11, cursor:"pointer", fontWeight:active?700:400,
+    fontFamily:"'Courier New',monospace"
+  });
+
   return React.createElement("div", null,
     React.createElement(PH, { title:"Overzicht componenten", action: React.createElement(CsvBtn, { onClick:csvOvz }) }),
-    React.createElement("div", { style:card({ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:14 }) },
-      React.createElement(FS, { label:"Project",    opts:prjOpts, value:fPrj, onChange:e=>{setFPrj(e.target.value);setFSub("");setFRK("");} }),
-      React.createElement(FS, { label:"Subproject", opts:subOpts, value:fSub, onChange:e=>{setFSub(e.target.value);setFRK("");} }),
-      React.createElement(FS, { label:"Regelkast",  opts:rkOpts,  value:fRK,  onChange:e=>setFRK(e.target.value) })
+
+    // Filter panel
+    React.createElement("div", { style:card() },
+      React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:16 }},
+        // Projects multi-select
+        React.createElement("div", null,
+          React.createElement("label", { style:lbl }, "Projecten"),
+          React.createElement("div", { style:{ display:"flex", flexWrap:"wrap", gap:5, marginTop:4 }},
+            prjs.map(p => React.createElement("button", { key:p.id, onClick:()=>toggle(selPrjs,setSelPrjs,p.id), style:chipStyle(selPrjs.has(p.id)) },
+              p.nr
+            ))
+          )
+        ),
+        // Subprojects multi-select
+        React.createElement("div", null,
+          React.createElement("label", { style:lbl }, "Subprojecten"),
+          React.createElement("div", { style:{ display:"flex", flexWrap:"wrap", gap:5, marginTop:4 }},
+            allSubsForSel.map(s => React.createElement("button", { key:s.id, onClick:()=>toggle(selSubs,setSelSubs,s.id), style:chipStyle(selSubs.has(s.id)) },
+              s.naam
+            ))
+          )
+        ),
+        // RKs multi-select
+        React.createElement("div", null,
+          React.createElement("label", { style:lbl }, "Regelkasten"),
+          React.createElement("div", { style:{ display:"flex", flexWrap:"wrap", gap:5, marginTop:4 }},
+            scopeRKs.map(rk => React.createElement("button", { key:rk, onClick:()=>toggle(selRKs,setSelRKs,rk), style:chipStyle(selRKs.has(rk)) },
+              rk
+            ))
+          )
+        )
+      ),
+      // Artikel filter
+      React.createElement("div", { style:{ marginTop:14, paddingTop:14, borderTop:`1px solid ${C.bdr}` }},
+        React.createElement("label", { style:lbl }, "Filter op artikel type"),
+        React.createElement("div", { style:{ display:"flex", flexWrap:"wrap", gap:5, marginTop:4 }},
+          React.createElement("button", { onClick:()=>setSelArt(""), style:chipStyle(!selArt) }, "Alle types"),
+          allArtTypes.map(a => React.createElement("button", { key:a.k, onClick:()=>setSelArt(a.k), style:chipStyle(selArt===a.k) },
+            `${a.merk} ${a.type}`
+          ))
+        )
+      ),
+      (selPrjs.size>0||selSubs.size>0||selRKs.size>0||selArt) && React.createElement("div", { style:{ marginTop:10 }},
+        React.createElement("button", { onClick:()=>{setSelPrjs(new Set());setSelSubs(new Set());setSelRKs(new Set());setSelArt("");}, style:ibtn(C.red) }, "✕ Wis filters")
+      )
     ),
-    React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:20 }},
+
+    // Stats row
+    React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:16 }},
       [
         { l:"Totaal gecodeerd", v:filtered.length,                                c:C.txt },
         { l:"Beschikbaar",     v:filtered.filter(a=>a.st==="beschikbaar").length,  c:C.grn },
         { l:"Uitgegeven",      v:filtered.filter(a=>a.st==="uitgegeven").length,   c:C.mut },
-      ].map(x => React.createElement("div", { key:x.l, style:card({ textAlign:"center", padding:"14px 12px", marginBottom:0 }) },
-        React.createElement("div", { style:{ fontSize:30, fontFamily:"monospace", fontWeight:800, color:x.c }}, x.v),
-        React.createElement("div", { style:{ fontSize:10, color:C.mut, fontWeight:700, marginTop:4, textTransform:"uppercase", letterSpacing:".07em" }}, x.l)
+      ].map(x => React.createElement("div", { key:x.l, style:card({ textAlign:"center", padding:"12px 10px", marginBottom:0 }) },
+        React.createElement("div", { style:{ fontSize:28, fontWeight:800, color:x.c }}, x.v),
+        React.createElement("div", { style:{ fontSize:10, color:C.mut, fontWeight:700, marginTop:3, textTransform:"uppercase", letterSpacing:".07em" }}, x.l)
       ))
     ),
-    grouped.length===0
-      ? React.createElement("div", { style:card({ textAlign:"center", color:C.mut, padding:32 }) }, "Geen assets voor deze selectie")
-      : React.createElement("div", { style:{ background:C.sur, border:`1px solid ${C.bdr}`, borderRadius:8, overflow:"hidden" }},
+
+    // Tab: types or drill-down
+    selArt && React.createElement("div", null,
+      // Drill-down for selected art type
+      React.createElement("div", { style:{ marginBottom:14, display:"flex", alignItems:"center", gap:10 }},
+        React.createElement("div", { style:{ fontSize:11, color:C.acc, fontWeight:700 }},
+          `▣ ${selArt.replace('||',' ')} — ${drillItems.length} stuks`
+        )
+      ),
+      React.createElement("div", { style:{ background:C.sur, border:`1px solid ${C.bdr}`, borderRadius:6, overflow:"hidden" }},
+        React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse" }},
+          React.createElement("thead", null,
+            React.createElement("tr", { style:{ background:C.sur2, borderBottom:`1px solid ${C.bdr}` }},
+              ["Opnemercode","Regelkast","Status","Uitgiftedatum","Aan wie","Firma"].map(h =>
+                React.createElement("th", { key:h, style:{ textAlign:"left", padding:"8px 12px", fontSize:10, color:C.mut, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em" }}, h)
+              )
+            )
+          ),
+          React.createElement("tbody", null,
+            drillItems.map((a,i) => React.createElement("tr", { key:a.id, style:{ borderBottom:`1px solid ${C.sur2}`, background:i%2?"rgba(255,255,255,.01)":"transparent" }},
+              React.createElement("td", { style:{ padding:"8px 12px", fontWeight:700, color:C.acc }}, a.opcode),
+              React.createElement("td", { style:{ padding:"8px 12px", color:C.blue }}, a.rk),
+              React.createElement("td", { style:{ padding:"8px 12px" }}, React.createElement(Bdg, { v:a.st, sm:true })),
+              React.createElement("td", { style:{ padding:"8px 12px", color:C.mut, fontSize:12 }}, a.uitDat||"—"),
+              React.createElement("td", { style:{ padding:"8px 12px", fontSize:12 }}, a.aan||"—"),
+              React.createElement("td", { style:{ padding:"8px 12px", color:"#94a3b8", fontSize:12 }}, a.firma||"—")
+            ))
+          )
+        )
+      )
+    ),
+
+    !selArt && (grouped.length===0
+      ? React.createElement("div", { style:card({ textAlign:"center", color:C.mut, padding:28 }) }, "Geen assets voor deze selectie")
+      : React.createElement("div", { style:{ background:C.sur, border:`1px solid ${C.bdr}`, borderRadius:6, overflow:"hidden" }},
           React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse" }},
             React.createElement("thead", null,
               React.createElement("tr", { style:{ background:C.sur2, borderBottom:`1px solid ${C.bdr}` }},
@@ -976,30 +1236,34 @@ function OvzPage({ assets, prjs }) {
               )
             ),
             React.createElement("tbody", null,
-              grouped.map((g,i) => React.createElement("tr", { key:i, style:{ borderBottom:`1px solid ${C.sur2}`, background:i%2?"rgba(255,255,255,.01)":"transparent" }},
-                React.createElement("td", { style:{ padding:"8px 12px", fontFamily:"monospace", fontWeight:700 }}, g.merk),
-                React.createElement("td", { style:{ padding:"8px 12px", fontFamily:"monospace" }}, g.type),
-                React.createElement("td", { style:{ padding:"8px 12px", fontFamily:"monospace", textAlign:"center", fontWeight:700 }}, g.total),
-                React.createElement("td", { style:{ padding:"8px 12px", textAlign:"center" }}, React.createElement("span", { style:{ color:C.grn, fontFamily:"monospace", fontWeight:700 }}, g.beschikbaar)),
-                React.createElement("td", { style:{ padding:"8px 12px", textAlign:"center" }}, React.createElement("span", { style:{ color:C.mut, fontFamily:"monospace" }}, g.uitgegeven)),
+              grouped.map((g,i) => React.createElement("tr", { key:i,
+                onClick:()=>setSelArt(g.merk+'||'+g.type),
+                style:{ borderBottom:`1px solid ${C.sur2}`, background:i%2?"rgba(255,255,255,.01)":"transparent", cursor:"pointer" }},
+                React.createElement("td", { style:{ padding:"8px 12px", fontWeight:700 }}, g.merk),
+                React.createElement("td", { style:{ padding:"8px 12px" }}, g.type),
+                React.createElement("td", { style:{ padding:"8px 12px", textAlign:"center", fontWeight:700 }}, g.total),
+                React.createElement("td", { style:{ padding:"8px 12px", textAlign:"center" }}, React.createElement("span", { style:{ color:C.grn, fontWeight:700 }}, g.beschikbaar)),
+                React.createElement("td", { style:{ padding:"8px 12px", textAlign:"center" }}, React.createElement("span", { style:{ color:C.mut }}, g.uitgegeven)),
                 React.createElement("td", { style:{ padding:"8px 12px" }},
-                  g.rks.map(rk => React.createElement("span", { key:rk, style:{ background:"rgba(59,130,246,.1)", color:C.blue, border:"1px solid rgba(59,130,246,.2)", borderRadius:3, padding:"1px 6px", fontSize:10, fontFamily:"monospace", marginRight:4 }}, rk))
+                  g.rks.map(rk => React.createElement("span", { key:rk, style:{ background:"rgba(59,130,246,.1)", color:C.blue, border:"1px solid rgba(59,130,246,.2)", borderRadius:3, padding:"1px 6px", fontSize:10, marginRight:4 }}, rk))
                 )
               ))
             )
           )
         )
+    )
   );
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   PAGINA: UITGIFTE
+   UITGIFTE — select coded assets + print receipt
 ═══════════════════════════════════════════════════════════════ */
-function UitPage({ assets, setAssets }) {
+function UitPage({ assets, upsertAsset, setAssets, assetStore }) {
   const [sel,  setSel]  = useState(new Set());
   const [form, setForm] = useState({ aan:"", firma:"", datum:new Date().toISOString().slice(0,10) });
   const [fRK,  setFRK]  = useState("");
   const [tab,  setTab]  = useState("beschikbaar");
+  const [printData, setPrintData] = useState(null);
 
   const beschikbaar = assets.filter(a=>a.st==="beschikbaar");
   const uitgegeven  = assets.filter(a=>a.st==="uitgegeven");
@@ -1010,10 +1274,66 @@ function UitPage({ assets, setAssets }) {
   const toggleSel = id => setSel(p=>{ const n=new Set(p); n.has(id)?n.delete(id):n.add(id); return n; });
   const toggleAll = () => setSel(sel.size===filtered.length?new Set():new Set(filtered.map(a=>a.id)));
 
-  const doUitgifte = () => {
+  const doUitgifte = async () => {
     if (sel.size===0||!form.aan||!form.firma) return;
-    setAssets(p => p.map(a => sel.has(a.id)?{...a,st:"uitgegeven",uitDat:form.datum,aan:form.aan,firma:form.firma}:a));
+    const updatedItems = [];
+    for (const a of assets) {
+      if (sel.has(a.id)) {
+        const updated = {...a, st:"uitgegeven", uitDat:form.datum, aan:form.aan, firma:form.firma};
+        await upsertAsset(updated);
+        updatedItems.push(updated);
+      }
+    }
+    // Prepare print data
+    setPrintData({ items:updatedItems, ...form });
     setSel(new Set());
+  };
+
+  const doPrint = () => {
+    if (!printData) return;
+    const w = window.open('', '_blank');
+    const rows = printData.items.map(a => `
+      <tr>
+        <td>${a.rk}</td>
+        <td><strong>${a.opcode}</strong></td>
+        <td>${a.merk}</td>
+        <td>${a.type}</td>
+      </tr>`).join('');
+    w.document.write(`
+      <!DOCTYPE html><html><head>
+      <meta charset="UTF-8">
+      <title>Uitgifte bonbon — ${printData.datum}</title>
+      <style>
+        body { font-family: Arial, sans-serif; font-size: 13px; color: #111; padding: 32px; max-width: 700px; margin: 0 auto; }
+        h1 { font-size: 18px; margin-bottom: 4px; }
+        .meta { color: #555; font-size: 12px; margin-bottom: 24px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 32px; }
+        th { background: #f0f0f0; text-align: left; padding: 7px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+        td { padding: 7px 10px; border-bottom: 1px solid #e0e0e0; }
+        tr:last-child td { border-bottom: none; }
+        .sig { margin-top: 48px; display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+        .sig-box { border-top: 1px solid #aaa; padding-top: 8px; font-size: 12px; color: #555; }
+        .sig-line { height: 48px; }
+        @media print { button { display: none; } }
+      </style>
+      </head><body>
+      <h1>▣ Uitgifte Ontvangstbewijs</h1>
+      <div class="meta">
+        Datum: <strong>${printData.datum}</strong> &nbsp;|&nbsp;
+        Uitgegeven aan: <strong>${printData.aan}</strong> &nbsp;|&nbsp;
+        Firma: <strong>${printData.firma}</strong>
+      </div>
+      <table>
+        <thead><tr><th>Regelkast</th><th>Opnemercode</th><th>Merk</th><th>Type</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="sig">
+        <div class="sig-box"><div class="sig-line"></div>Handtekening afnemer: ${printData.aan}</div>
+        <div class="sig-box"><div class="sig-line"></div>Handtekening uitgever</div>
+      </div>
+      <button onclick="window.print()" style="margin-top:24px;padding:8px 20px;background:#f59e0b;border:none;border-radius:4px;font-size:13px;font-weight:bold;cursor:pointer;">🖨 Afdrukken</button>
+      </body></html>`);
+    w.document.close();
   };
 
   const csvUit = () => downloadCSV('uitgifte.csv',
@@ -1022,9 +1342,29 @@ function UitPage({ assets, setAssets }) {
   );
 
   return React.createElement("div", null,
-    React.createElement(PH, { title:"Uitgifte componenten", action: React.createElement(CsvBtn, { onClick:csvUit }) }),
-    React.createElement("div", { style:card({ border:`1px solid ${C.acc}40` }) },
-      React.createElement("div", { style:{ fontSize:11, color:C.acc, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", marginBottom:14 }},
+    React.createElement(PH, { title:"Uitgifte componenten", action:
+      React.createElement(React.Fragment, null,
+        React.createElement(CsvBtn, { onClick:csvUit }),
+        printData && React.createElement("button", { onClick:doPrint, style:btn(C.purple, false) }, "🖨 Print ontvangstbewijs")
+      )
+    }),
+
+    // Print ready notification
+    printData && React.createElement("div", { style:card({ border:`1px solid ${C.grn}40`, background:"rgba(34,197,94,.06)", marginBottom:16, padding:14 })},
+      React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center" }},
+        React.createElement("div", null,
+          React.createElement("div", { style:{ color:C.grn, fontWeight:700, fontSize:12, marginBottom:4 }}, `✓ ${printData.items.length} opnemer${printData.items.length!==1?"s":"" } uitgegeven aan ${printData.aan} (${printData.firma})`),
+          React.createElement("div", { style:{ color:C.mut, fontSize:11 }}, `Datum: ${printData.datum}`)
+        ),
+        React.createElement("div", { style:{ display:"flex", gap:8 }},
+          React.createElement("button", { onClick:doPrint, style:btn(C.grn) }, "🖨 Afdrukken / Ondertekenen"),
+          React.createElement("button", { onClick:()=>setPrintData(null), style:ibtn(C.mut) }, "✕ Sluiten")
+        )
+      )
+    ),
+
+    React.createElement("div", { style:card({ border:`1px solid ${C.acc}30` }) },
+      React.createElement("div", { style:{ fontSize:10, color:C.acc, fontWeight:700, textTransform:"uppercase", letterSpacing:".08em", marginBottom:14 }},
         `Uitgifte registreren — ${sel.size} geselecteerd`),
       React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 160px auto", gap:12, alignItems:"end" }},
         React.createElement(FI, { label:"Aan wie *", value:form.aan,  onChange:e=>setForm(p=>({...p,aan:e.target.value})),  placeholder:"Naam persoon" }),
@@ -1036,19 +1376,23 @@ function UitPage({ assets, setAssets }) {
         )
       )
     ),
+
     React.createElement("div", { style:{ display:"flex", gap:0, marginBottom:16, borderBottom:`1px solid ${C.bdr}` }},
       [
         { id:"beschikbaar", l:`Beschikbaar (${beschikbaar.length})` },
         { id:"uitgegeven",  l:`Uitgegeven (${uitgegeven.length})` },
-      ].map(t => React.createElement("button", { key:t.id, onClick:()=>setTab(t.id), style:{ background:"none", border:"none", borderBottom:tab===t.id?`2px solid ${C.acc}`:"2px solid transparent", color:tab===t.id?C.acc:C.mut, padding:"8px 18px", cursor:"pointer", fontSize:13, fontWeight:tab===t.id?600:400 }}, t.l))
+      ].map(t => React.createElement("button", { key:t.id, onClick:()=>setTab(t.id),
+        style:{ background:"none", border:"none", borderBottom:tab===t.id?`2px solid ${C.acc}`:"2px solid transparent",
+          color:tab===t.id?C.acc:C.mut, padding:"7px 18px", cursor:"pointer", fontSize:12, fontWeight:tab===t.id?700:400 }}, t.l))
     ),
+
     tab==="beschikbaar" && React.createElement(React.Fragment, null,
       React.createElement("div", { style:{ marginBottom:12 }},
         React.createElement(FS, { opts:rkOpts, value:fRK, onChange:e=>setFRK(e.target.value) })
       ),
       filtered.length===0
         ? React.createElement("div", { style:card({ textAlign:"center", color:C.mut, padding:28 }) }, "Geen beschikbare componenten")
-        : React.createElement("div", { style:{ background:C.sur, border:`1px solid ${C.bdr}`, borderRadius:8, overflow:"hidden" }},
+        : React.createElement("div", { style:{ background:C.sur, border:`1px solid ${C.bdr}`, borderRadius:6, overflow:"hidden" }},
             React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse" }},
               React.createElement("thead", null,
                 React.createElement("tr", { style:{ background:C.sur2, borderBottom:`1px solid ${C.bdr}` }},
@@ -1061,23 +1405,25 @@ function UitPage({ assets, setAssets }) {
                 )
               ),
               React.createElement("tbody", null,
-                filtered.map((a,i) => React.createElement("tr", { key:a.id, onClick:()=>toggleSel(a.id), style:{ borderBottom:`1px solid ${C.sur2}`, cursor:"pointer", background:sel.has(a.id)?"rgba(245,158,11,.07)":i%2?"rgba(255,255,255,.01)":"transparent" }},
+                filtered.map((a,i) => React.createElement("tr", { key:a.id, onClick:()=>toggleSel(a.id),
+                  style:{ borderBottom:`1px solid ${C.sur2}`, cursor:"pointer", background:sel.has(a.id)?"rgba(245,158,11,.06)":i%2?"rgba(255,255,255,.01)":"transparent" }},
                   React.createElement("td", { style:{ padding:"8px 12px" }},
                     React.createElement("input", { type:"checkbox", style:{ accentColor:C.acc }, checked:sel.has(a.id), onChange:()=>toggleSel(a.id), onClick:e=>e.stopPropagation() })
                   ),
-                  React.createElement("td", { style:{ padding:"8px 12px", fontFamily:"monospace", fontSize:12, color:C.blue }}, a.rk),
-                  React.createElement("td", { style:{ padding:"8px 12px", fontFamily:"monospace", fontWeight:700, color:C.acc }}, a.opcode),
-                  React.createElement("td", { style:{ padding:"8px 12px", fontFamily:"monospace", fontWeight:600 }}, a.merk),
-                  React.createElement("td", { style:{ padding:"8px 12px", fontFamily:"monospace" }}, a.type)
+                  React.createElement("td", { style:{ padding:"8px 12px", color:C.blue }}, a.rk),
+                  React.createElement("td", { style:{ padding:"8px 12px", fontWeight:700, color:C.acc }}, a.opcode),
+                  React.createElement("td", { style:{ padding:"8px 12px", fontWeight:700 }}, a.merk),
+                  React.createElement("td", { style:{ padding:"8px 12px" }}, a.type)
                 ))
               )
             )
           )
     ),
+
     tab==="uitgegeven" && (
       uitgegeven.length===0
         ? React.createElement("div", { style:card({ textAlign:"center", color:C.mut, padding:28 }) }, "Nog niets uitgegeven")
-        : React.createElement("div", { style:{ background:C.sur, border:`1px solid ${C.bdr}`, borderRadius:8, overflow:"auto" }},
+        : React.createElement("div", { style:{ background:C.sur, border:`1px solid ${C.bdr}`, borderRadius:6, overflow:"auto" }},
             React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse", minWidth:700 }},
               React.createElement("thead", null,
                 React.createElement("tr", { style:{ background:C.sur2, borderBottom:`1px solid ${C.bdr}` }},
@@ -1088,11 +1434,11 @@ function UitPage({ assets, setAssets }) {
               ),
               React.createElement("tbody", null,
                 uitgegeven.map((a,i) => React.createElement("tr", { key:a.id, style:{ borderBottom:`1px solid ${C.sur2}`, background:i%2?"rgba(255,255,255,.01)":"transparent" }},
-                  React.createElement("td", { style:{ padding:"7px 12px", fontFamily:"monospace", fontSize:12 }}, a.uitDat||"—"),
-                  React.createElement("td", { style:{ padding:"7px 12px", fontFamily:"monospace", color:C.blue }}, a.rk),
-                  React.createElement("td", { style:{ padding:"7px 12px", fontFamily:"monospace", fontWeight:700, color:C.acc }}, a.opcode),
-                  React.createElement("td", { style:{ padding:"7px 12px", fontFamily:"monospace", fontWeight:600 }}, a.merk),
-                  React.createElement("td", { style:{ padding:"7px 12px", fontFamily:"monospace" }}, a.type),
+                  React.createElement("td", { style:{ padding:"7px 12px", fontSize:12 }}, a.uitDat||"—"),
+                  React.createElement("td", { style:{ padding:"7px 12px", color:C.blue }}, a.rk),
+                  React.createElement("td", { style:{ padding:"7px 12px", fontWeight:700, color:C.acc }}, a.opcode),
+                  React.createElement("td", { style:{ padding:"7px 12px", fontWeight:700 }}, a.merk),
+                  React.createElement("td", { style:{ padding:"7px 12px" }}, a.type),
                   React.createElement("td", { style:{ padding:"7px 12px" }}, a.aan||"—"),
                   React.createElement("td", { style:{ padding:"7px 12px", color:"#94a3b8" }}, a.firma||"—")
                 ))
@@ -1104,305 +1450,131 @@ function UitPage({ assets, setAssets }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   PAGINA: INSTELLINGEN (NIEUWE PAGINA)
+   INSTELLINGEN
 ═══════════════════════════════════════════════════════════════ */
-function InstPage({ levs, setLevs, prjs, setPrjs, bests, setBests, assets, setAssets }) {
-  const fileInputLev = useRef(null);
-  const fileInputPrj = useRef(null);
-  const fileInputBest = useRef(null);
+function InstPage({ fb, levs, setLevs, prjs, setPrjs, bests, setBests, assets, setAssets, levStore, prjStore, bestStore, assetStore }) {
+  const fileInputLev   = useRef(null);
+  const fileInputPrj   = useRef(null);
+  const fileInputBest  = useRef(null);
   const fileInputAsset = useRef(null);
 
-  // ──────── LEVERANCIERS ────────
-  const exportLev = () => downloadCSV('leveranciers.csv',
-    ['Naam','Contactpersoon','Telefoon','E-mail','Opmerkingen'],
-    levs.map(l => [l.naam, l.contact, l.tel, l.email, l.opmerking])
-  );
-
+  const exportLev = () => downloadCSV('leveranciers.csv',['Naam','Contactpersoon','Telefoon','E-mail','Opmerkingen'],levs.map(l=>[l.naam,l.contact,l.tel,l.email,l.opmerking]));
   const importLev = e => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      const { headers, rows } = parseCSV(ev.target.result);
-      const imported = rows.map(r => ({
-        id: `l-${Date.now()}-${Math.random()}`,
-        naam: r[0] || '',
-        contact: r[1] || '',
-        tel: r[2] || '',
-        email: r[3] || '',
-        opmerking: r[4] || ''
-      }));
-      setLevs(imported);
-      alert(`${imported.length} leveranciers geïmporteerd`);
+    const file=e.target.files?.[0]; if(!file) return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const {rows}=parseCSV(ev.target.result);
+      const imported=rows.map(r=>({id:`l-${Date.now()}-${Math.random()}`,naam:r[0]||'',contact:r[1]||'',tel:r[2]||'',email:r[3]||'',opmerking:r[4]||''}));
+      levStore.setAll(imported); alert(`${imported.length} leveranciers geïmporteerd`);
     };
-    reader.readAsText(file);
-    e.target.value = '';
+    reader.readAsText(file); e.target.value='';
   };
+  const resetLev=()=>{ if(!window.confirm('Alle leveranciers wissen?')) return; levStore.setAll([]); };
 
-  const resetLev = () => {
-    if (!window.confirm('Weet je zeker dat je alle leveranciers wilt wissen?')) return;
-    setLevs([]);
-  };
-
-  // ──────── PROJECTEN ────────
   const exportPrj = () => {
-    const rows = [];
-    prjs.forEach(p => {
-      p.subs.forEach(s => {
-        if (s.rks.length > 0) s.rks.forEach(rk => rows.push([p.nr, p.naam, s.naam, rk]));
-        else rows.push([p.nr, p.naam, s.naam, '']);
-      });
-      if (p.subs.length === 0) rows.push([p.nr, p.naam, '', '']);
-    });
-    downloadCSV('projecten.csv', ['Projectnummer','Projectnaam','Subproject','Regelkast'], rows);
+    const rows=[];
+    prjs.forEach(p=>{p.subs.forEach(s=>{if(s.rks.length>0)s.rks.forEach(rk=>rows.push([p.nr,p.naam,s.naam,rk]));else rows.push([p.nr,p.naam,s.naam,'']);});if(p.subs.length===0)rows.push([p.nr,p.naam,'','']);});
+    downloadCSV('projecten.csv',['Projectnummer','Projectnaam','Subproject','Regelkast'],rows);
   };
-
   const importPrj = e => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      const { headers, rows } = parseCSV(ev.target.result);
-      const prjMap = {};
-      
-      rows.forEach(r => {
-        const prjNr = r[0]?.trim();
-        const prjNaam = r[1]?.trim();
-        const subNaam = r[2]?.trim();
-        const rk = r[3]?.trim();
-        
-        if (!prjNr) return;
-        
-        if (!prjMap[prjNr]) {
-          prjMap[prjNr] = { id: `p-${Date.now()}-${Math.random()}`, nr: prjNr, naam: prjNaam || '', subs: [] };
-        }
-        
-        if (subNaam) {
-          let sub = prjMap[prjNr].subs.find(s => s.naam === subNaam);
-          if (!sub) {
-            sub = { id: `s-${Date.now()}-${Math.random()}`, naam: subNaam, rks: [] };
-            prjMap[prjNr].subs.push(sub);
-          }
-          if (rk && !sub.rks.includes(rk)) {
-            sub.rks.push(rk);
-          }
-        }
-      });
-      
-      const imported = Object.values(prjMap);
-      setPrjs(imported);
-      alert(`${imported.length} projecten geïmporteerd`);
+    const file=e.target.files?.[0]; if(!file) return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const {rows}=parseCSV(ev.target.result);
+      const prjMap={};
+      rows.forEach(r=>{const pNr=r[0]?.trim(),pNm=r[1]?.trim(),sNm=r[2]?.trim(),rk=r[3]?.trim();if(!pNr)return;if(!prjMap[pNr])prjMap[pNr]={id:`p-${Date.now()}-${Math.random()}`,nr:pNr,naam:pNm||'',subs:[]};if(sNm){let s=prjMap[pNr].subs.find(x=>x.naam===sNm);if(!s){s={id:`s-${Date.now()}-${Math.random()}`,naam:sNm,rks:[]};prjMap[pNr].subs.push(s);}if(rk&&!s.rks.includes(rk))s.rks.push(rk);}});
+      const imported=Object.values(prjMap);
+      prjStore.setAll(imported); alert(`${imported.length} projecten geïmporteerd`);
     };
-    reader.readAsText(file);
-    e.target.value = '';
+    reader.readAsText(file); e.target.value='';
   };
+  const resetPrj=()=>{ if(!window.confirm('Alle projecten wissen?')) return; prjStore.setAll([]); };
 
-  const resetPrj = () => {
-    if (!window.confirm('Weet je zeker dat je alle projecten wilt wissen?')) return;
-    setPrjs([]);
-  };
-
-  // ──────── BESTELLINGEN ────────
   const exportBest = () => {
-    const rows = [];
-    bests.forEach(b => {
-      const lev = levs.find(l => l.id === b.levId);
-      const prj = prjs.find(p => p.id === b.prjId);
-      const sub = prjs.find(p => p.id === b.prjId)?.subs.find(s => s.id === b.subId);
-      (b.arts.length > 0 ? b.arts : [{}]).forEach(a => {
-        rows.push([
-          b.status, lev?.naam || '', prj?.nr || '', sub?.naam || '',
-          b.offNr || '', b.offDat || '', b.ioNr || '', b.bestDat || '',
-          b.obNr || '', b.levBestNr || '', b.verwLev || '', b.pbNr || '', b.levDat || '',
-          a.merk || '', a.type || '', a.n || '', a.opm || ''
-        ]);
-      });
-    });
-    downloadCSV('bestellingen.csv',
-      ['Status','Leverancier','Project','Subproject','Offertenr','Offertedatum','IO Nr','Besteldatum','OB Nr','Lev.bestelnr','Verw.levering','Pakbonnr','Leverdatum','Merk','Type','Aantal','Opmerking'],
-      rows
-    );
+    const rows=[];
+    bests.forEach(b=>{const lev=levs.find(l=>l.id===b.levId),prj=prjs.find(p=>p.id===b.prjId),sub=prj?.subs.find(s=>s.id===b.subId);(b.arts.length>0?b.arts:[{}]).forEach(a=>{rows.push([b.status,lev?.naam||'',prj?.nr||'',sub?.naam||'',b.offNr||'',b.offDat||'',b.ioNr||'',b.bestDat||'',b.obNr||'',b.levBestNr||'',b.verwLev||'',b.pbNr||'',b.levDat||'',a.merk||'',a.type||'',a.n||'',a.opm||'']);});});
+    downloadCSV('bestellingen.csv',['Status','Leverancier','Project','Subproject','Offertenr','Offertedatum','IO Nr','Besteldatum','OB Nr','Lev.bestelnr','Verw.levering','Pakbonnr','Leverdatum','Merk','Type','Aantal','Opmerking'],rows);
   };
-
   const importBest = e => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      const { headers, rows } = parseCSV(ev.target.result);
-      const bestMap = {};
-      
-      rows.forEach(r => {
-        const status = r[0]?.trim();
-        const levNaam = r[1]?.trim();
-        const prjNr = r[2]?.trim();
-        const subNaam = r[3]?.trim();
-        const ioNr = r[6]?.trim();
-        
-        if (!status) return;
-        
-        const lev = levs.find(l => l.naam === levNaam);
-        const prj = prjs.find(p => p.nr === prjNr);
-        const sub = prj?.subs.find(s => s.naam === subNaam);
-        
-        const key = `${status}-${levNaam}-${prjNr}-${subNaam}-${ioNr}`;
-        
-        if (!bestMap[key]) {
-          bestMap[key] = {
-            id: `b-${Date.now()}-${Math.random()}`,
-            levId: lev?.id || '',
-            prjId: prj?.id || '',
-            subId: sub?.id || '',
-            status: status,
-            heeftOff: !!r[4],
-            offNr: r[4] || '',
-            offDat: r[5] || '',
-            ioNr: r[6] || '',
-            bestDat: r[7] || '',
-            obNr: r[8] || '',
-            levBestNr: r[9] || '',
-            verwLev: r[10] || '',
-            pbNr: r[11] || '',
-            levDat: r[12] || '',
-            arts: []
-          };
-        }
-        
-        const merk = r[13]?.trim();
-        const type = r[14]?.trim();
-        if (merk && type) {
-          bestMap[key].arts.push({
-            id: `a-${Date.now()}-${Math.random()}`,
-            merk: merk,
-            type: type,
-            n: parseInt(r[15]) || 1,
-            opm: r[16] || ''
-          });
-        }
-      });
-      
-      const imported = Object.values(bestMap);
-      setBests(imported);
-      alert(`${imported.length} bestellingen geïmporteerd`);
+    const file=e.target.files?.[0]; if(!file) return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const {rows}=parseCSV(ev.target.result);
+      const bMap={};
+      rows.forEach(r=>{const st=r[0]?.trim(),levNm=r[1]?.trim(),prjNr=r[2]?.trim(),subNm=r[3]?.trim(),ioNr=r[6]?.trim();if(!st)return;const lev=levs.find(l=>l.naam===levNm),prj=prjs.find(p=>p.nr===prjNr),sub=prj?.subs.find(s=>s.naam===subNm);const k=`${st}-${levNm}-${prjNr}-${subNm}-${ioNr}`;if(!bMap[k])bMap[k]={id:`b-${Date.now()}-${Math.random()}`,levId:lev?.id||'',prjId:prj?.id||'',subId:sub?.id||'',status:st,heeftOff:!!r[4],offNr:r[4]||'',offDat:r[5]||'',ioNr:r[6]||'',bestDat:r[7]||'',obNr:r[8]||'',levBestNr:r[9]||'',verwLev:r[10]||'',pbNr:r[11]||'',levDat:r[12]||'',arts:[]};const merk=r[13]?.trim(),type=r[14]?.trim();if(merk&&type)bMap[k].arts.push({id:`a-${Date.now()}-${Math.random()}`,merk,type,n:parseInt(r[15])||1,opm:r[16]||''});});
+      const imported=Object.values(bMap);
+      bestStore.setAll(imported); alert(`${imported.length} bestellingen geïmporteerd`);
     };
-    reader.readAsText(file);
-    e.target.value = '';
+    reader.readAsText(file); e.target.value='';
   };
+  const resetBest=()=>{ if(!window.confirm('Alle bestellingen wissen?')) return; bestStore.setAll([]); };
 
-  const resetBest = () => {
-    if (!window.confirm('Weet je zeker dat je alle bestellingen wilt wissen?')) return;
-    setBests([]);
-  };
-
-  // ──────── ASSETS ────────
-  const exportAsset = () => downloadCSV('assets.csv',
-    ['Regelkast','Opnemercode','Merk','Type','Status','Uitgiftedatum','Aan wie','Firma'],
-    assets.map(a => [a.rk, a.opcode, a.merk, a.type, a.st, a.uitDat || '', a.aan || '', a.firma || ''])
-  );
-
+  const exportAsset = () => downloadCSV('assets.csv',['Regelkast','Opnemercode','Merk','Type','Status','Uitgiftedatum','Aan wie','Firma'],assets.map(a=>[a.rk,a.opcode,a.merk,a.type,a.st,a.uitDat||'',a.aan||'',a.firma||'']));
   const importAsset = e => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      const { headers, rows } = parseCSV(ev.target.result);
-      const imported = rows.map(r => ({
-        id: `as-${Date.now()}-${Math.random()}`,
-        rk: r[0] || '',
-        opcode: r[1] || '',
-        merk: r[2] || '',
-        type: r[3] || '',
-        st: r[4] || 'beschikbaar',
-        uitDat: r[5] || '',
-        aan: r[6] || '',
-        firma: r[7] || '',
-        artId: ''
-      }));
-      setAssets(imported);
-      alert(`${imported.length} assets geïmporteerd`);
+    const file=e.target.files?.[0]; if(!file) return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const {rows}=parseCSV(ev.target.result);
+      const imported=rows.map(r=>({id:`as-${Date.now()}-${Math.random()}`,rk:r[0]||'',opcode:r[1]||'',merk:r[2]||'',type:r[3]||'',st:r[4]||'beschikbaar',uitDat:r[5]||'',aan:r[6]||'',firma:r[7]||'',artId:''}));
+      assetStore.setAll(imported); alert(`${imported.length} assets geïmporteerd`);
     };
-    reader.readAsText(file);
-    e.target.value = '';
+    reader.readAsText(file); e.target.value='';
   };
+  const resetAsset=()=>{ if(!window.confirm('Alle assets wissen?')) return; assetStore.setAll([]); };
 
-  const resetAsset = () => {
-    if (!window.confirm('Weet je zeker dat je alle assets wilt wissen?')) return;
-    setAssets([]);
-  };
+  const sections = [
+    { t:"Leveranciers",  count:levs.length,   unit:"leverancier",  exp:exportLev,   imp:()=>fileInputLev.current?.click(),   ref:fileInputLev,   onChange:importLev,   reset:resetLev },
+    { t:"Projecten",     count:prjs.length,    unit:"project",      exp:exportPrj,   imp:()=>fileInputPrj.current?.click(),   ref:fileInputPrj,   onChange:importPrj,   reset:resetPrj },
+    { t:"Bestellingen",  count:bests.length,   unit:"bestelling",   exp:exportBest,  imp:()=>fileInputBest.current?.click(),  ref:fileInputBest,  onChange:importBest,  reset:resetBest },
+    { t:"Assetcodering", count:assets.length,  unit:"asset",        exp:exportAsset, imp:()=>fileInputAsset.current?.click(), ref:fileInputAsset, onChange:importAsset, reset:resetAsset },
+  ];
 
   return React.createElement("div", { style:{ maxWidth:900 }},
-    React.createElement("div", { style:{ fontSize:11, fontWeight:700, color:C.mut, textTransform:"uppercase", letterSpacing:".08em", marginBottom:20 }}, "Instellingen — Data beheer"),
-    
-    // LEVERANCIERS
-    React.createElement("div", { style:card() },
-      React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }},
-        React.createElement(SH, { t:"Leveranciers" }),
-        React.createElement("div", { style:{ display:"flex", gap:8 }},
-          React.createElement("button", { onClick:exportLev, style:btn(C.grn, false, { padding:"5px 12px", fontSize:11 }) }, "⬇ Exporteren"),
-          React.createElement("button", { onClick:()=>fileInputLev.current?.click(), style:btn(C.blue, false, { padding:"5px 12px", fontSize:11 }) }, "⬆ Importeren"),
-          React.createElement("button", { onClick:resetLev, style:btn(C.red, false, { padding:"5px 12px", fontSize:11 }) }, "🗑 Wissen")
-        )
+    React.createElement("div", { style:{ fontSize:11, fontWeight:700, color:C.mut, textTransform:"uppercase", letterSpacing:".08em", marginBottom:16 }}, "Instellingen — Data beheer"),
+
+    // Firebase setup guide
+    React.createElement("div", { style:card({ border:`1px solid ${fb?.isConfigured?C.grn+'40':C.acc+'40'}` }) },
+      React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }},
+        React.createElement(SH, { t:"Firebase configuratie" }),
+        React.createElement(Bdg, { v:fb?.isConfigured?"geleverd":"offerte", sm:true })
       ),
-      React.createElement("input", { ref:fileInputLev, type:"file", accept:".csv", onChange:importLev }),
-      React.createElement("div", { style:{ fontSize:12, color:C.mut }}, 
-        `${levs.length} leverancier${levs.length !== 1 ? 's' : ''} in systeem`
-      )
+      fb?.isConfigured
+        ? React.createElement("div", { style:{ color:C.grn, fontSize:12 }}, "✓ Firebase is verbonden. Data wordt automatisch gesynchroniseerd.")
+        : React.createElement("div", null,
+            React.createElement("div", { style:{ fontSize:12, color:C.mut, marginBottom:12, lineHeight:1.7 }},
+              "Om data permanent op te slaan, configureer Firebase Firestore:"
+            ),
+            React.createElement("ol", { style:{ fontSize:12, color:C.mut, paddingLeft:20, lineHeight:2.2 }},
+              React.createElement("li", null, React.createElement("a", { href:"https://console.firebase.google.com", target:"_blank", style:{color:C.blue} }, "console.firebase.google.com"), " → Nieuw project aanmaken"),
+              React.createElement("li", null, 'Build → Firestore Database → "Create database" (test mode)'),
+              React.createElement("li", null, "Project Settings → Your apps → Web (</>) → App registreren"),
+              React.createElement("li", null, "Kopieer de ", React.createElement("code", { style:{background:C.bg, padding:"1px 6px", borderRadius:3, color:C.acc} }, "firebaseConfig"), " uit de SDK snippet"),
+              React.createElement("li", null, "Vervang de config bovenaan dit HTML-bestand (zoek naar ", React.createElement("code", { style:{background:C.bg, padding:"1px 6px", borderRadius:3, color:C.acc} }, "JOUW_API_KEY"), ")")
+            )
+          )
     ),
 
-    // PROJECTEN
-    React.createElement("div", { style:card() },
-      React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }},
-        React.createElement(SH, { t:"Projecten" }),
+    sections.map(s => React.createElement("div", { key:s.t, style:card() },
+      React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }},
+        React.createElement(SH, { t:s.t }),
         React.createElement("div", { style:{ display:"flex", gap:8 }},
-          React.createElement("button", { onClick:exportPrj, style:btn(C.grn, false, { padding:"5px 12px", fontSize:11 }) }, "⬇ Exporteren"),
-          React.createElement("button", { onClick:()=>fileInputPrj.current?.click(), style:btn(C.blue, false, { padding:"5px 12px", fontSize:11 }) }, "⬆ Importeren"),
-          React.createElement("button", { onClick:resetPrj, style:btn(C.red, false, { padding:"5px 12px", fontSize:11 }) }, "🗑 Wissen")
+          React.createElement("button", { onClick:s.exp,   style:btn(C.grn,  false, { padding:"4px 11px", fontSize:11 }) }, "⬇ Export"),
+          React.createElement("button", { onClick:s.imp,   style:btn(C.blue, false, { padding:"4px 11px", fontSize:11 }) }, "⬆ Import"),
+          React.createElement("button", { onClick:s.reset, style:btn(C.red,  false, { padding:"4px 11px", fontSize:11 }) }, "🗑 Wissen")
         )
       ),
-      React.createElement("input", { ref:fileInputPrj, type:"file", accept:".csv", onChange:importPrj }),
-      React.createElement("div", { style:{ fontSize:12, color:C.mut }}, 
-        `${prjs.length} project${prjs.length !== 1 ? 'en' : ''} in systeem`
+      React.createElement("input", { ref:s.ref, type:"file", accept:".csv", onChange:s.onChange }),
+      React.createElement("div", { style:{ fontSize:12, color:C.mut }},
+        `${s.count} ${s.unit}${s.count!==1?"en/s":""} in systeem`
       )
-    ),
+    )),
 
-    // BESTELLINGEN
-    React.createElement("div", { style:card() },
-      React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }},
-        React.createElement(SH, { t:"Bestellingen" }),
-        React.createElement("div", { style:{ display:"flex", gap:8 }},
-          React.createElement("button", { onClick:exportBest, style:btn(C.grn, false, { padding:"5px 12px", fontSize:11 }) }, "⬇ Exporteren"),
-          React.createElement("button", { onClick:()=>fileInputBest.current?.click(), style:btn(C.blue, false, { padding:"5px 12px", fontSize:11 }) }, "⬆ Importeren"),
-          React.createElement("button", { onClick:resetBest, style:btn(C.red, false, { padding:"5px 12px", fontSize:11 }) }, "🗑 Wissen")
-        )
-      ),
-      React.createElement("input", { ref:fileInputBest, type:"file", accept:".csv", onChange:importBest }),
-      React.createElement("div", { style:{ fontSize:12, color:C.mut }}, 
-        `${bests.length} bestelling${bests.length !== 1 ? 'en' : ''} in systeem`
-      )
-    ),
-
-    // ASSETS
-    React.createElement("div", { style:card() },
-      React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }},
-        React.createElement(SH, { t:"Assetcodering" }),
-        React.createElement("div", { style:{ display:"flex", gap:8 }},
-          React.createElement("button", { onClick:exportAsset, style:btn(C.grn, false, { padding:"5px 12px", fontSize:11 }) }, "⬇ Exporteren"),
-          React.createElement("button", { onClick:()=>fileInputAsset.current?.click(), style:btn(C.blue, false, { padding:"5px 12px", fontSize:11 }) }, "⬆ Importeren"),
-          React.createElement("button", { onClick:resetAsset, style:btn(C.red, false, { padding:"5px 12px", fontSize:11 }) }, "🗑 Wissen")
-        )
-      ),
-      React.createElement("input", { ref:fileInputAsset, type:"file", accept:".csv", onChange:importAsset }),
-      React.createElement("div", { style:{ fontSize:12, color:C.mut }}, 
-        `${assets.length} asset${assets.length !== 1 ? 's' : ''} gecodeerd`
-      )
-    ),
-
-    React.createElement("div", { style:card({ border:`1px solid ${C.acc}40`, marginTop:24 }) },
-      React.createElement("div", { style:{ fontSize:11, color:C.acc, fontWeight:700, marginBottom:8 }}, "ℹ Instructies"),
-      React.createElement("ul", { style:{ fontSize:12, color:C.mut, paddingLeft:20, lineHeight:1.6 }},
-        React.createElement("li", null, "Exporteren: Download de huidige data als CSV-bestand"),
-        React.createElement("li", null, "Importeren: Upload een CSV-bestand om data te vervangen (huidige data wordt overschreven)"),
-        React.createElement("li", null, "Wissen: Verwijder alle data van de betreffende pagina (na bevestiging)")
+    React.createElement("div", { style:card({ border:`1px solid ${C.bdr}`, marginTop:8 }) },
+      React.createElement("div", { style:{ fontSize:10, color:C.acc, fontWeight:700, marginBottom:8, textTransform:"uppercase", letterSpacing:".06em" }}, "ℹ Instructies"),
+      React.createElement("ul", { style:{ fontSize:12, color:C.mut, paddingLeft:20, lineHeight:1.8 }},
+        React.createElement("li", null, "Export: Download huidige data als CSV (ook als backup)"),
+        React.createElement("li", null, "Import: Upload CSV om data te vervangen (overschrijft bestaande data)"),
+        React.createElement("li", null, "Wissen: Verwijder alle data van de betreffende sectie")
       )
     )
   );

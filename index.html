@@ -8,6 +8,7 @@
 <!-- Firebase SDK (compat versie — globale variabelen) -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 
 <style>
   /* ── RESET & BASE ── */
@@ -368,12 +369,75 @@
 
   /* confirm checkbox hack */
   .has-offerte-wrap { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+
+  /* ── LOGIN SCREEN ── */
+  #login-screen {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 9999;
+    flex-direction: column;
+  }
+  #login-screen.hidden { display: none; }
+  .login-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 36px 40px;
+    width: 360px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .login-logo {
+    font-family: var(--font-mono);
+    font-size: 11px; font-weight: 700;
+    letter-spacing: 0.15em; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 6px;
+  }
+  .login-title {
+    font-size: 22px; font-weight: 700;
+    margin-bottom: 28px; letter-spacing: -0.02em;
+  }
+  .login-error {
+    background: rgba(239,68,68,0.1);
+    border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 7px; padding: 10px 12px;
+    font-size: 13px; color: var(--red);
+    margin-bottom: 14px; display: none;
+  }
+  .login-error.show { display: block; }
+  .login-footer {
+    font-size: 11px; color: var(--text3);
+    text-align: center; margin-top: 20px;
+  }
 </style>
 </head>
 <body>
 
+<!-- ── LOGIN SCREEN ── -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">Artikelregistratie v3.0</div>
+    <div class="login-title">Inloggen</div>
+    <div class="login-error" id="login-error"></div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label>E-mailadres</label>
+      <input type="email" id="login-email" placeholder="naam@bedrijf.nl"
+        onkeydown="if(event.key==='Enter')document.getElementById('login-pw').focus()">
+    </div>
+    <div class="form-group" style="margin-bottom:20px">
+      <label>Wachtwoord</label>
+      <input type="password" id="login-pw" placeholder="••••••••"
+        onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:10px" onclick="doLogin()" id="login-btn">
+      Inloggen
+    </button>
+    <div class="login-footer">Neem contact op met de beheerder voor toegang.</div>
+  </div>
+</div>
+
 <!-- ── NAV ── -->
-<nav id="nav">
+<nav id="nav" style="display:none">
   <div id="nav-logo">
     <div class="logo-title">Artikel&shy;registratie</div>
     <div class="logo-sub">v3.0</div>
@@ -392,7 +456,7 @@
 </nav>
 
 <!-- ── MAIN ── -->
-<main id="main">
+<main id="main" style="display:none">
 
   <!-- ══ PAGE: LEVERANCIERS ══ -->
   <div id="page-leveranciers" class="page active">
@@ -496,15 +560,7 @@ const firebaseConfig = {
 let _db = null;
 let _fbConnected = false;
 
-(function initFirebase() {
-  try {
-    if (!firebaseConfig.apiKey.includes("JOUW")) {
-      firebase.initializeApp(firebaseConfig);
-      _db = firebase.firestore();
-      _fbConnected = true;
-    }
-  } catch(e) { console.warn("Firebase niet geconfigureerd, lokale modus.", e); }
-})();
+// Firebase wordt geïnitialiseerd in DOMContentLoaded (zie onderaan)
 
 let _state = { leveranciers:[], projecten:[], bestellingen:[], assets:[] };
 
@@ -623,7 +679,7 @@ function renderPage(pg) {
   if (pg === 'assetcodering') renderAssetcodering();
   if (pg === 'overzicht')    renderOverzicht();
   if (pg === 'uitgifte')     renderUitgifte();
-  if (pg === 'instellingen') renderInstellingen();
+  if (pg === 'instellingen') { renderInstellingen(); setTimeout(loadUsers, 100); }
 }
 
 function updateStatus() {
@@ -1673,7 +1729,47 @@ function printOntvangst() {
       .sig-box { flex: 1; border-top: 1px solid #999; padding-top: 8px; font-size: 12px; color: #555; }
       .print-btn { background: #f97316; color: white; border: none; padding: 10px 20px; cursor: pointer; font-size: 14px; border-radius: 6px; margin-bottom: 20px; }
       @media print { .print-btn { display: none; } }
-    </style></head><body>
+    
+  /* ── LOGIN SCREEN ── */
+  #login-screen {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 9999;
+    flex-direction: column;
+  }
+  #login-screen.hidden { display: none; }
+  .login-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 36px 40px;
+    width: 360px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .login-logo {
+    font-family: var(--font-mono);
+    font-size: 11px; font-weight: 700;
+    letter-spacing: 0.15em; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 6px;
+  }
+  .login-title {
+    font-size: 22px; font-weight: 700;
+    margin-bottom: 28px; letter-spacing: -0.02em;
+  }
+  .login-error {
+    background: rgba(239,68,68,0.1);
+    border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 7px; padding: 10px 12px;
+    font-size: 13px; color: var(--red);
+    margin-bottom: 14px; display: none;
+  }
+  .login-error.show { display: block; }
+  .login-footer {
+    font-size: 11px; color: var(--text3);
+    text-align: center; margin-top: 20px;
+  }
+</style></head><body>
     <button class="print-btn" onclick="window.print()">🖨 Afdrukken</button>
     <h2>Ontvangstbewijs</h2>
     <p>Datum: <strong>${fmt(d.datum)}</strong></p>
@@ -1742,6 +1838,29 @@ function renderInstellingen() {
             <button class="btn btn-danger btn-sm" onclick="clearData('${col}')">🗑 Wissen</button>
           </div>
         </div>`).join('')}
+    </div>
+
+    <!-- Gebruikersbeheer -->
+    <div class="card" style="margin-top:16px" id="users-card">
+      <div class="card-header">
+        <div class="card-title">👥 Gebruikersbeheer</div>
+        <button class="btn btn-primary btn-sm" onclick="showAddUserForm()">+ Gebruiker toevoegen</button>
+      </div>
+      <div id="add-user-form" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px">
+        <div class="form-grid" style="margin-bottom:10px">
+          <div class="form-group"><label>E-mailadres</label><input type="email" id="new-user-email" placeholder="naam@bedrijf.nl"></div>
+          <div class="form-group"><label>Wachtwoord</label><input type="password" id="new-user-pw" placeholder="Min. 6 tekens"></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary btn-sm" onclick="addUser()">✓ Aanmaken</button>
+          <button class="btn btn-secondary btn-sm" onclick="hideAddUserForm()">Annuleren</button>
+          <span id="add-user-msg" style="font-size:12px"></span>
+        </div>
+      </div>
+      <div id="users-list"><div style="font-size:13px;color:var(--text3);padding:8px 0">Gebruikerslijst wordt geladen...</div></div>
+      <div style="font-size:12px;color:var(--text3);margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+        ⚠️ Gebruikers worden beheerd via Firebase Authentication. Wachtwoorden worden nooit opgeslagen in Firestore.
+      </div>
     </div>
 
     <!-- Instructies -->
@@ -1858,10 +1977,200 @@ async function importCSV(col, input) {
   input.value = '';
 }
 
+// ════════════════════════════════════════════════════════════
+//  GEBRUIKERSBEHEER
+// ════════════════════════════════════════════════════════════
+
+function showAddUserForm() {
+  document.getElementById('add-user-form').style.display = '';
+  document.getElementById('new-user-email').focus();
+}
+function hideAddUserForm() {
+  document.getElementById('add-user-form').style.display = 'none';
+  document.getElementById('new-user-email').value = '';
+  document.getElementById('new-user-pw').value = '';
+  document.getElementById('add-user-msg').textContent = '';
+}
+
+async function addUser() {
+  const email = document.getElementById('new-user-email').value.trim();
+  const pw    = document.getElementById('new-user-pw').value;
+  const msg   = document.getElementById('add-user-msg');
+  if (!email) { msg.style.color='var(--red)'; msg.textContent='Vul een e-mailadres in.'; return; }
+  if (pw.length < 6) { msg.style.color='var(--red)'; msg.textContent='Wachtwoord minimaal 6 tekens.'; return; }
+  msg.style.color='var(--text2)'; msg.textContent='Bezig...';
+  try {
+    const secondaryApp = firebase.initializeApp(firebaseConfig, 'secondary_' + Date.now());
+    const secondaryAuth = secondaryApp.auth();
+    const cred = await secondaryAuth.createUserWithEmailAndPassword(email, pw);
+    const uid = cred.user.uid;
+    await secondaryAuth.signOut();
+    await secondaryApp.delete();
+    await _db.collection('users').doc(uid).set({
+      email, aangemaakt: new Date().toISOString(), aangemaaktDoor: _currentUser?.email || ''
+    });
+    msg.style.color='var(--green)'; msg.textContent='Gebruiker aangemaakt!';
+    setTimeout(() => { hideAddUserForm(); loadUsers(); }, 1200);
+  } catch(e) {
+    const msgs = {
+      'auth/email-already-in-use': 'Dit e-mailadres is al in gebruik.',
+      'auth/invalid-email': 'Ongeldig e-mailadres.',
+      'auth/weak-password': 'Wachtwoord is te eenvoudig.'
+    };
+    msg.style.color='var(--red)';
+    msg.textContent = msgs[e.code] || ('Fout: ' + e.message);
+  }
+}
+
+async function loadUsers() {
+  const el = document.getElementById('users-list');
+  if (!el) return;
+  if (!_fbConnected) {
+    el.innerHTML = '<div style="font-size:13px;color:var(--text3)">Gebruikersbeheer vereist Firebase.</div>';
+    return;
+  }
+  try {
+    const snap = await _db.collection('users').get();
+    const users = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (!users.length) {
+      el.innerHTML = '<div style="font-size:13px;color:var(--text3);padding:8px 0">Nog geen gebruikers. Voeg de eerste toe via "+ Gebruiker toevoegen".</div>';
+      return;
+    }
+    let rows = users.map(u => {
+      const isSelf = u.email === (_currentUser && _currentUser.email);
+      const datum = u.aangemaakt ? u.aangemaakt.slice(0,10).split('-').reverse().join('-') : '—';
+      return '<tr>' +
+        '<td>' + esc(u.email) + (isSelf ? ' <span class="badge badge-orange" style="font-size:10px">jij</span>' : '') + '</td>' +
+        '<td style="font-size:12px;color:var(--text2)">' + datum + '</td>' +
+        '<td style="font-size:12px;color:var(--text2)">' + esc(u.aangemaaktDoor || '—') + '</td>' +
+        '<td class="td-actions">' +
+          '<button class="btn btn-ghost btn-sm" title="Stuur wachtwoord reset e-mail" onclick="doResetPassword('' + esc(u.email) + '')">🔑</button>' +
+          (!isSelf ? '<button class="btn btn-danger btn-sm" onclick="deleteUser('' + u.id + '','' + esc(u.email) + '')">🗑</button>' : '') +
+        '</td>' +
+      '</tr>';
+    }).join('');
+    el.innerHTML = '<div class="tbl-wrap"><table>' +
+      '<thead><tr><th>E-mailadres</th><th>Aangemaakt op</th><th>Aangemaakt door</th><th>Acties</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody></table></div>';
+  } catch(e) {
+    el.innerHTML = '<div style="font-size:13px;color:var(--red)">Fout bij laden: ' + e.message + '</div>';
+  }
+}
+
+async function deleteUser(uid, email) {
+  confirm('Gebruiker verwijderen', 'Verwijder <strong>' + esc(email) + '</strong> uit het systeem?', async () => {
+    try {
+      await _db.collection('users').doc(uid).delete();
+      toast('Gebruiker verwijderd', 'success');
+      loadUsers();
+    } catch(e) {
+      toast('Fout bij verwijderen: ' + e.message, 'error');
+    }
+  });
+}
+
+async function doResetPassword(email) {
+  try {
+    await firebase.auth().sendPasswordResetEmail(email);
+    toast('Wachtwoord reset e-mail verstuurd naar ' + email, 'success');
+  } catch(e) {
+    toast('Fout: ' + e.message, 'error');
+  }
+}
+
+
 // Boot
 window.addEventListener('DOMContentLoaded', () => {
-  window.DB.load();
+  // Firebase initialiseren
+  try {
+    if (!firebaseConfig.apiKey.includes("JOUW")) {
+      firebase.initializeApp(firebaseConfig);
+      _db = firebase.firestore();
+      _fbConnected = true;
+      console.log("Firebase verbonden met project:", firebaseConfig.projectId);
+    } else {
+      console.log("Firebase niet geconfigureerd, lokale modus.");
+    }
+  } catch(e) {
+    console.error("Firebase init fout:", e);
+  }
+
+  if (_fbConnected) {
+    // Auth state observer — toont login of app
+    firebase.auth().onAuthStateChanged(user => {
+      if (user) {
+        _currentUser = user;
+        document.getElementById('login-screen').classList.add('hidden');
+        document.getElementById('nav').style.display = '';
+        document.getElementById('main').style.display = '';
+        updateNavUser(user);
+        window.DB.load();
+      } else {
+        _currentUser = null;
+        document.getElementById('login-screen').classList.remove('hidden');
+        document.getElementById('nav').style.display = 'none';
+        document.getElementById('main').style.display = 'none';
+      }
+    });
+  } else {
+    // Lokale modus: geen login vereist
+    document.getElementById('login-screen').classList.add('hidden');
+    window.DB.load();
+  }
 });
+
+// ── Auth state ──
+let _currentUser = null;
+
+function updateNavUser(user) {
+  let el = document.getElementById('nav-user');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'nav-user';
+    el.style.cssText = 'padding:10px 18px;border-top:1px solid var(--border);margin-top:auto';
+    document.getElementById('nav').appendChild(el);
+  }
+  el.innerHTML = \`
+    <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--font-mono)">Ingelogd als</div>
+    <div style="font-size:12px;color:var(--text2);word-break:break-all;margin-bottom:8px">\${esc(user.email)}</div>
+    <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center" onclick="doLogout()">Uitloggen</button>
+  \`;
+}
+
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const pw    = document.getElementById('login-pw').value;
+  const errEl = document.getElementById('login-error');
+  const btn   = document.getElementById('login-btn');
+
+  if (!email || !pw) {
+    errEl.textContent = 'Vul e-mail en wachtwoord in.';
+    errEl.classList.add('show'); return;
+  }
+  btn.textContent = 'Bezig...'; btn.disabled = true;
+  errEl.classList.remove('show');
+
+  try {
+    await firebase.auth().signInWithEmailAndPassword(email, pw);
+    document.getElementById('login-pw').value = '';
+  } catch(e) {
+    const msgs = {
+      'auth/user-not-found': 'E-mailadres niet gevonden.',
+      'auth/wrong-password': 'Onjuist wachtwoord.',
+      'auth/invalid-email': 'Ongeldig e-mailadres.',
+      'auth/too-many-requests': 'Te veel pogingen. Probeer later opnieuw.',
+      'auth/invalid-credential': 'Onjuist e-mailadres of wachtwoord.'
+    };
+    errEl.textContent = msgs[e.code] || ('Fout: ' + e.message);
+    errEl.classList.add('show');
+  } finally {
+    btn.textContent = 'Inloggen'; btn.disabled = false;
+  }
+}
+
+async function doLogout() {
+  await firebase.auth().signOut();
+}
 </script>
 </body>
 </html>

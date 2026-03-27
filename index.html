@@ -1,1586 +1,1867 @@
 <!DOCTYPE html>
 <html lang="nl">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Artikelregistratie v3.0</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-<!-- Firebase -->
-<script type="module">
-  // ═══════════════════════════════════════════════
-  // FIREBASE CONFIG — vervang met jouw eigen config
-  // Ga naar: https://console.firebase.google.com
-  // 1. Maak een nieuw project aan
-  // 2. Voeg een Web App toe
-  // 3. Kopieer de firebaseConfig hieronder
-  // 4. Activeer Firestore Database (test mode)
-  // ═══════════════════════════════════════════════
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
-  import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, writeBatch, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyAJTWHVBZz2VQutEIDKPtiTk2ep5sFoeEM",
-    authDomain: "voorraad-6ada3.firebaseapp.com",
-    projectId: "voorraad-6ada3",
-    storageBucket: "voorraad-6ada3.firebasestorage.app",
-    messagingSenderId: "318083496096",
-    appId: "1:318083496096:web:e946ed191a8095b32df1c5"
-  };
+<!-- Firebase SDK (compat versie — globale variabelen) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
-  // Check of config ingevuld is
-  const isConfigured = firebaseConfig.apiKey !== "JOUW_API_KEY";
-
-  let db = null;
-  if (isConfigured) {
-  	const app = initializeApp(firebaseConfig);
-    db = getFirestore(app);
-  }
-
-  // Expose globally
-  window.__firebase = {
-    db, isConfigured,
-    collection, doc, setDoc, deleteDoc, onSnapshot, writeBatch, serverTimestamp
-  };
-  window.dispatchEvent(new Event('firebase-ready'));
-</script>
 <style>
+  /* ── RESET & BASE ── */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #0a0d14; color: #e2e8f0; font-family: 'Courier New', monospace; font-size: 14px; }
-  input[type=date]::-webkit-calendar-picker-indicator { filter: invert(0.6); }
-  input[type=file] { display: none; }
-  ::-webkit-scrollbar { width: 5px; height: 5px; }
-  ::-webkit-scrollbar-track { background: #0a0d14; }
-  ::-webkit-scrollbar-thumb { background: #1e2235; border-radius: 2px; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-  @keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
-  .fade-in { animation: fadeIn .2s ease forwards; }
-  @media print {
-    .no-print { display: none !important; }
-    body { background: white; color: black; font-family: Arial, sans-serif; }
-    .print-only { display: block !important; }
+
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3350;
+    --accent: #f97316;
+    --accent2: #fb923c;
+    --text: #e8eaf0;
+    --text2: #8b90a8;
+    --text3: #5a5f7a;
+    --green: #22c55e;
+    --blue: #3b82f6;
+    --red: #ef4444;
+    --yellow: #eab308;
+    --purple: #a855f7;
+    --radius: 10px;
+    --nav-w: 220px;
+    --font: 'IBM Plex Sans', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
   }
-  .print-only { display: none; }
+
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── NAV ── */
+  #nav {
+    width: var(--nav-w);
+    min-width: var(--nav-w);
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    position: fixed;
+    left: 0; top: 0;
+    z-index: 100;
+  }
+  #nav-logo {
+    padding: 20px 18px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  #nav-logo .logo-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-family: var(--font-mono);
+  }
+  #nav-logo .logo-sub {
+    font-size: 10px;
+    color: var(--text3);
+    margin-top: 2px;
+    font-family: var(--font-mono);
+  }
+  #nav-items { padding: 10px 8px; flex: 1; overflow-y: auto; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text2);
+    transition: all 0.15s;
+    margin-bottom: 2px;
+    user-select: none;
+  }
+  .nav-item:hover { background: var(--surface2); color: var(--text); }
+  .nav-item.active { background: rgba(249,115,22,0.15); color: var(--accent); }
+  .nav-item .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+  /* status badge in nav */
+  #status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--green);
+    margin: 14px 18px;
+    margin-top: auto;
+    flex-shrink: 0;
+  }
+  #status-dot.local { background: var(--yellow); animation: blink 1.2s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  #status-label {
+    font-size: 10px; color: var(--text3);
+    padding: 0 18px 16px;
+    font-family: var(--font-mono);
+  }
+
+  /* ── MAIN ── */
+  #main {
+    margin-left: var(--nav-w);
+    flex: 1;
+    height: 100vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .page { display: none; padding: 28px 32px; max-width: 1200px; width: 100%; }
+  .page.active { display: block; }
+
+  /* ── PAGE HEADER ── */
+  .page-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 24px;
+  }
+  .page-title {
+    font-size: 22px; font-weight: 700; letter-spacing: -0.02em;
+  }
+  .page-title span { color: var(--accent); }
+  .page-actions { display: flex; gap: 8px; }
+
+  /* ── BUTTONS ── */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 14px; border-radius: 8px; border: none;
+    font-family: var(--font); font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent2); }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { background: var(--border); }
+  .btn-ghost { background: transparent; color: var(--text2); border: 1px solid transparent; }
+  .btn-ghost:hover { background: var(--surface2); color: var(--text); }
+  .btn-danger { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+  .btn-danger:hover { background: rgba(239,68,68,0.25); }
+  .btn-success { background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+  .btn-success:hover { background: rgba(34,197,94,0.25); }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── CARDS ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  .card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .card-title { font-size: 14px; font-weight: 600; }
+
+  /* ── FORMS ── */
+  .form-card {
+    background: var(--surface2);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 16px;
+    animation: slideDown 0.2s ease;
+  }
+  @keyframes slideDown { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+  .form-group { display: flex; flex-direction: column; gap: 5px; }
+  .form-group.full { grid-column: 1/-1; }
+  label { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.06em; }
+  input, select, textarea {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 8px 11px;
+    font-family: var(--font);
+    font-size: 13px;
+    color: var(--text);
+    transition: border-color 0.15s;
+    width: 100%;
+  }
+  input:focus, select:focus, textarea:focus {
+    outline: none; border-color: var(--accent);
+  }
+  textarea { resize: vertical; min-height: 70px; }
+  select option { background: var(--surface2); }
+  .form-actions { display: flex; gap: 8px; margin-top: 16px; }
+
+  /* ── BADGES ── */
+  .badge {
+    display: inline-flex; align-items: center;
+    padding: 2px 8px; border-radius: 99px;
+    font-size: 11px; font-weight: 600; font-family: var(--font-mono);
+  }
+  .badge-offerte  { background: rgba(168,85,247,0.15); color: var(--purple); }
+  .badge-bestelling { background: rgba(59,130,246,0.15); color: var(--blue); }
+  .badge-bevestigd { background: rgba(234,179,8,0.15); color: var(--yellow); }
+  .badge-geleverd  { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge-blue  { background: rgba(59,130,246,0.15); color: var(--blue); }
+  .badge-orange { background: rgba(249,115,22,0.15); color: var(--accent); }
+  .badge-green { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge-red   { background: rgba(239,68,68,0.15); color: var(--red); }
+
+  /* ── TABLE ── */
+  .tbl-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead { background: var(--surface2); }
+  th { padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
+  td { padding: 10px 14px; border-top: 1px solid var(--border); vertical-align: middle; }
+  tbody tr:hover { background: rgba(255,255,255,0.02); }
+  .td-actions { display: flex; gap: 4px; }
+
+  /* ── CHIP ── */
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 9px;
+    font-size: 12px; color: var(--text2);
+  }
+  .chip strong { color: var(--text); font-size: 12px; }
+
+  /* ── PROGRESS ── */
+  .progress { height: 4px; background: var(--border); border-radius: 2px; }
+  .progress-bar { height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.3s; }
+
+  /* ── DIALOG ── */
+  .dialog-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000; animation: fadeIn 0.15s;
+  }
+  @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+  .dialog {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 24px; max-width: 420px; width: 90%;
+    animation: popIn 0.2s ease;
+  }
+  @keyframes popIn { from{transform:scale(0.95);opacity:0} to{transform:scale(1);opacity:1} }
+  .dialog h3 { font-size: 16px; font-weight: 600; margin-bottom: 10px; }
+  .dialog p { font-size: 13px; color: var(--text2); margin-bottom: 20px; line-height: 1.5; }
+  .dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+  /* ── STATUS FLOW ── */
+  .status-flow {
+    display: flex; align-items: center; gap: 0; margin: 12px 0;
+    flex-wrap: wrap; gap: 4px;
+  }
+  .status-step {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 500; color: var(--text3);
+  }
+  .status-step.done { color: var(--green); }
+  .status-step.current { color: var(--accent); }
+  .status-step .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--text3); flex-shrink: 0;
+  }
+  .status-step.done .dot { background: var(--green); }
+  .status-step.current .dot { background: var(--accent); }
+  .status-arrow { color: var(--text3); margin: 0 4px; font-size: 11px; }
+
+  /* ── EXPAND CARD ── */
+  .order-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 8px; overflow: hidden; }
+  .order-card-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 16px; cursor: pointer;
+    transition: background 0.15s;
+  }
+  .order-card-header:hover { background: var(--surface2); }
+  .order-card-body { padding: 16px; border-top: 1px solid var(--border); background: rgba(0,0,0,0.2); }
+  .expand-arrow { color: var(--text3); font-size: 12px; transition: transform 0.2s; }
+  .expanded .expand-arrow { transform: rotate(90deg); }
+
+  /* ── STATS ── */
+  .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px;
+  }
+  .stat-value { font-size: 28px; font-weight: 700; font-family: var(--font-mono); color: var(--accent); }
+  .stat-label { font-size: 12px; color: var(--text2); margin-top: 4px; }
+
+  /* ── FILTER PANEL ── */
+  .filter-panel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px; margin-bottom: 16px;
+  }
+  .filter-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 12px; }
+  .filter-section label { display: block; font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+  .filter-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  .filter-btn {
+    padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--surface2); color: var(--text2); font-size: 12px;
+    cursor: pointer; transition: all 0.15s; font-family: var(--font);
+  }
+  .filter-btn:hover { border-color: var(--accent); color: var(--text); }
+  .filter-btn.active { background: rgba(249,115,22,0.15); border-color: var(--accent); color: var(--accent); }
+
+  /* ── CHECKBOX ── */
+  .cb-row { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .cb-row input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+
+  /* ── EMPTY STATE ── */
+  .empty { text-align: center; padding: 48px 16px; color: var(--text3); }
+  .empty .empty-icon { font-size: 36px; margin-bottom: 12px; }
+  .empty p { font-size: 14px; }
+
+  /* ── TOAST ── */
+  #toast {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .toast-item {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 16px;
+    font-size: 13px; animation: slideUp 0.2s ease;
+    display: flex; align-items: center; gap: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  }
+  @keyframes slideUp { from{transform:translateY(10px);opacity:0} to{transform:translateY(0);opacity:1} }
+
+  /* ── UITGIFTE PRINT ── */
+  @media print {
+    body { background: white; color: black; }
+    #nav, #main > *:not(.print-doc) { display: none !important; }
+  }
+
+  /* ── INLINE EDIT ── */
+  .inline-edit { display: flex; align-items: center; gap: 6px; }
+  .inline-edit input { padding: 4px 8px; font-size: 13px; }
+  .tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 5px; padding: 3px 8px;
+    font-size: 12px; color: var(--text2); font-family: var(--font-mono);
+  }
+  .tag .tag-x { cursor: pointer; color: var(--text3); font-size: 14px; line-height: 1; }
+  .tag .tag-x:hover { color: var(--red); }
+
+  /* ── INVENTORY BAR ── */
+  .inv-item {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 14px; margin-bottom: 8px;
+  }
+  .inv-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .inv-name { font-size: 13px; font-weight: 600; }
+  .inv-count { font-size: 12px; font-family: var(--font-mono); }
+  .count-green { color: var(--green); }
+  .count-red   { color: var(--red); }
+
+  /* confirm checkbox hack */
+  .has-offerte-wrap { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 </style>
 </head>
 <body>
-<div id="root"></div>
+
+<!-- ── NAV ── -->
+<nav id="nav">
+  <div id="nav-logo">
+    <div class="logo-title">Artikel&shy;registratie</div>
+    <div class="logo-sub">v3.0</div>
+  </div>
+  <div id="nav-items">
+    <div class="nav-item active" data-page="leveranciers"><span class="nav-icon">🏭</span>Leveranciers</div>
+    <div class="nav-item" data-page="projecten"><span class="nav-icon">📁</span>Projecten</div>
+    <div class="nav-item" data-page="bestellingen"><span class="nav-icon">📋</span>Bestellingen</div>
+    <div class="nav-item" data-page="assetcodering"><span class="nav-icon">🏷</span>Assetcodering</div>
+    <div class="nav-item" data-page="overzicht"><span class="nav-icon">📊</span>Overzicht</div>
+    <div class="nav-item" data-page="uitgifte"><span class="nav-icon">📤</span>Uitgifte</div>
+    <div class="nav-item" data-page="instellingen"><span class="nav-icon">⚙️</span>Instellingen</div>
+  </div>
+  <div id="status-dot" class="local"></div>
+  <div id="status-label">Lokale modus</div>
+</nav>
+
+<!-- ── MAIN ── -->
+<main id="main">
+
+  <!-- ══ PAGE: LEVERANCIERS ══ -->
+  <div id="page-leveranciers" class="page active">
+    <div class="page-header">
+      <h1 class="page-title"><span>🏭</span> Leveranciers</h1>
+      <div class="page-actions">
+        <button class="btn btn-secondary btn-sm" onclick="exportCSV('leveranciers')">⬇ CSV</button>
+        <button class="btn btn-primary btn-sm" onclick="showLeverancierForm()">+ Nieuw</button>
+      </div>
+    </div>
+    <div id="lev-form-container"></div>
+    <div id="lev-list"></div>
+  </div>
+
+  <!-- ══ PAGE: PROJECTEN ══ -->
+  <div id="page-projecten" class="page">
+    <div class="page-header">
+      <h1 class="page-title"><span>📁</span> Projecten</h1>
+      <div class="page-actions">
+        <button class="btn btn-secondary btn-sm" onclick="exportCSV('projecten')">⬇ CSV</button>
+        <button class="btn btn-primary btn-sm" onclick="showProjectForm()">+ Nieuw project</button>
+      </div>
+    </div>
+    <div id="proj-form-container"></div>
+    <div id="proj-list"></div>
+  </div>
+
+  <!-- ══ PAGE: BESTELLINGEN ══ -->
+  <div id="page-bestellingen" class="page">
+    <div class="page-header">
+      <h1 class="page-title"><span>📋</span> Bestellingen</h1>
+      <div class="page-actions">
+        <button class="btn btn-secondary btn-sm" onclick="exportCSV('bestellingen')">⬇ CSV</button>
+        <button class="btn btn-secondary btn-sm" onclick="showBestelForm('offerte')">+ Vanaf offerte</button>
+        <button class="btn btn-primary btn-sm" onclick="showBestelForm('bestelling')">+ Nieuwe bestelling</button>
+      </div>
+    </div>
+    <div id="bestel-form-container"></div>
+    <div id="bestel-list"></div>
+  </div>
+
+  <!-- ══ PAGE: ASSETCODERING ══ -->
+  <div id="page-assetcodering" class="page">
+    <div class="page-header">
+      <h1 class="page-title"><span>🏷</span> Assetcodering</h1>
+      <div class="page-actions">
+        <button class="btn btn-secondary btn-sm" onclick="exportCSV('assets')">⬇ CSV</button>
+      </div>
+    </div>
+    <div id="asset-content"></div>
+  </div>
+
+  <!-- ══ PAGE: OVERZICHT ══ -->
+  <div id="page-overzicht" class="page">
+    <div class="page-header">
+      <h1 class="page-title"><span>📊</span> Overzicht</h1>
+      <div class="page-actions">
+        <button class="btn btn-secondary btn-sm" onclick="exportCSV('overzicht')">⬇ CSV</button>
+      </div>
+    </div>
+    <div id="overzicht-content"></div>
+  </div>
+
+  <!-- ══ PAGE: UITGIFTE ══ -->
+  <div id="page-uitgifte" class="page">
+    <div class="page-header">
+      <h1 class="page-title"><span>📤</span> Uitgifte</h1>
+      <div class="page-actions">
+        <button class="btn btn-secondary btn-sm" onclick="exportCSV('uitgifte')">⬇ CSV</button>
+        <button class="btn btn-secondary btn-sm" id="print-btn" style="display:none" onclick="printOntvangst()">🖨 Print ontvangstbewijs</button>
+      </div>
+    </div>
+    <div id="uitgifte-content"></div>
+  </div>
+
+  <!-- ══ PAGE: INSTELLINGEN ══ -->
+  <div id="page-instellingen" class="page">
+    <div class="page-header">
+      <h1 class="page-title"><span>⚙️</span> Instellingen</h1>
+    </div>
+    <div id="instellingen-content"></div>
+  </div>
+
+</main>
+
+<!-- Toast container -->
+<div id="toast"></div>
+
 <script>
-const { useState, useMemo, useRef, useEffect, useCallback } = React;
+// FIREBASE INIT + DATA ACCESS LAYER
 
-/* ═══════════════════════════════════════════════════════════════
-   DEMO DATA
-═══════════════════════════════════════════════════════════════ */
-const D_LEV = [
-  { id:"l1", naam:"Instrumentatie Noord BV", contact:"Petra Smit", tel:"050-7654321", email:"p.smit@innl.nl", opmerking:"Vaste leverancier Belimo. Levertijd 2–3 weken. Nettoprijzen." },
-  { id:"l2", naam:"Technisch Bureau Janssen", contact:"Jan de Vries", tel:"06-12345678", email:"jdevries@tbj.nl", opmerking:"15% korting op flowmeters. Betalingstermijn 30 dagen." },
-  { id:"l3", naam:"Technics Supply", contact:"Mark van den Berg", tel:"020-1234567", email:"info@techsupply.nl", opmerking:"" },
-];
-const D_PRJ = [
-  { id:"p1", nr:"PRJ-2024-014", naam:"Waterzuivering Noord", subs:[
-    { id:"s1", naam:"Fase 1 — Inname",       rks:["RK-101","RK-102"] },
-    { id:"s2", naam:"Fase 2 — Behandeling",   rks:["RK-201","RK-202","RK-203"] },
-  ]},
-  { id:"p2", nr:"PRJ-2024-017", naam:"Pompstation Oost", subs:[
-    { id:"s3", naam:"Hoofdinstallatie",        rks:["RK-301","RK-302"] },
-  ]},
-];
-const D_BEST = [
-  { id:"b1", levId:"l1", prjId:"p1", subId:"s1", status:"geleverd",
-    heeftOff:true,  offNr:"OFF-2024-0155", offDat:"2024-02-20",
-    ioNr:"IO-2024-0089", bestDat:"2024-03-05",
-    obNr:"OB-44821", levBestNr:"BES-44821", verwLev:"2024-03-12",
-    pbNr:"PB-2024-0341", levDat:"2024-03-10",
-    arts:[
-      { id:"a1", merk:"Belimo",           type:"EV015",           n:10, opm:"" },
-      { id:"a2", merk:"Belimo",           type:"EV030",           n:5,  opm:"DN25 flens" },
-      { id:"a3", merk:"Endress+Hauser",   type:"Promag 10W",      n:3,  opm:"DN50" },
-    ]},
-  { id:"b2", levId:"l2", prjId:"p1", subId:"s2", status:"bevestigd",
-    heeftOff:false, offNr:"", offDat:"",
-    ioNr:"IO-2024-0102", bestDat:"2024-03-14",
-    obNr:"BES-44955", levBestNr:"BES-44955", verwLev:"2024-03-28",
-    pbNr:"", levDat:"",
-    arts:[
-      { id:"a4", merk:"Siemens", type:"SITRANS P DS III", n:4, opm:"" },
-      { id:"a5", merk:"Wika",    type:"S-10",             n:6, opm:"4-20mA" },
-    ]},
-  { id:"b3", levId:"l1", prjId:"p2", subId:"s3", status:"offerte",
-    heeftOff:true, offNr:"OFF-2024-0178", offDat:"2024-03-18",
-    ioNr:"", bestDat:"", obNr:"", levBestNr:"", verwLev:"", pbNr:"", levDat:"",
-    arts:[
-      { id:"a6", merk:"ABB", type:"FS400 Flowmeter", n:2, opm:"" },
-    ]},
-];
-const D_ASSETS = [
-  { id:"as1", rk:"RK-101", opcode:"FT-101", artId:"a1", merk:"Belimo", type:"EV015", st:"beschikbaar", uitDat:"", aan:"", firma:"" },
-  { id:"as2", rk:"RK-101", opcode:"FT-102", artId:"a1", merk:"Belimo", type:"EV015", st:"beschikbaar", uitDat:"", aan:"", firma:"" },
-  { id:"as3", rk:"RK-102", opcode:"FT-201", artId:"a1", merk:"Belimo", type:"EV015", st:"uitgegeven",  uitDat:"2024-03-15", aan:"P. Bakker", firma:"Installatietechniek BV" },
-  { id:"as4", rk:"RK-101", opcode:"PT-101", artId:"a2", merk:"Belimo", type:"EV030", st:"beschikbaar", uitDat:"", aan:"", firma:"" },
-];
+const firebaseConfig = {
+  apiKey: "AIzaSyAJTWHVBZz2VQutEIDKPtiTk2ep5sFoeEM",
+  authDomain: "voorraad-6ada3.firebaseapp.com",
+  projectId: "voorraad-6ada3",
+  storageBucket: "voorraad-6ada3.firebasestorage.app",
+  messagingSenderId: "318083496096",
+  appId: "1:318083496096:web:e946ed191a8095b32df1c5"
+};
 
-/* ═══════════════════════════════════════════════════════════════
-   FIREBASE HOOK
-═══════════════════════════════════════════════════════════════ */
-function useFirebase() {
-  const [ready, setReady] = useState(!!window.__firebase);
-  useEffect(() => {
-    if (window.__firebase) { setReady(true); return; }
-    const h = () => setReady(true);
-    window.addEventListener('firebase-ready', h);
-    return () => window.removeEventListener('firebase-ready', h);
-  }, []);
-  return ready ? window.__firebase : null;
+let _db = null;
+let _fbConnected = false;
+
+(function initFirebase() {
+  try {
+    if (!firebaseConfig.apiKey.includes("JOUW")) {
+      firebase.initializeApp(firebaseConfig);
+      _db = firebase.firestore();
+      _fbConnected = true;
+    }
+  } catch(e) { console.warn("Firebase niet geconfigureerd, lokale modus.", e); }
+})();
+
+let _state = { leveranciers:[], projecten:[], bestellingen:[], assets:[] };
+
+function _loadLocal() {
+  ["leveranciers","projecten","bestellingen","assets"].forEach(k => {
+    try { _state[k] = JSON.parse(localStorage.getItem("ar_"+k)||"[]"); } catch(e){}
+  });
+}
+function _saveLocal(col) {
+  localStorage.setItem("ar_"+col, JSON.stringify(_state[col]));
 }
 
-function useFirestoreCollection(fb, colName, fallback) {
-  const [data, setData] = useState(fallback);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    if (!fb?.isConfigured || !fb.db) {
-      setData(fallback);
-      setLoaded(true);
-      return;
-    }
-    const unsub = fb.onSnapshot(fb.collection(fb.db, colName), snap => {
-      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setData(docs.length > 0 ? docs : fallback);
-      setLoaded(true);
-    });
-    return unsub;
-  }, [fb?.isConfigured]);
-
-  const upsert = useCallback(async (item) => {
-    if (!fb?.isConfigured || !fb.db) {
-      setData(p => p.find(x => x.id === item.id) ? p.map(x => x.id === item.id ? item : x) : [...p, item]);
-      return;
-    }
-    const { id, ...rest } = item;
-    await fb.setDoc(fb.doc(fb.db, colName, id), { ...rest, _updated: fb.serverTimestamp() });
-  }, [fb?.isConfigured]);
-
-  const remove = useCallback(async (id) => {
-    if (!fb?.isConfigured || !fb.db) {
-      setData(p => p.filter(x => x.id !== id));
-      return;
-    }
-    await fb.deleteDoc(fb.doc(fb.db, colName, id));
-  }, [fb?.isConfigured]);
-
-  const setAll = useCallback(async (items) => {
-    if (!fb?.isConfigured || !fb.db) {
-      setData(items);
-      return;
-    }
-    // batch write
-    const batch = fb.writeBatch(fb.db);
-    // first delete existing
-    const snap = await new Promise(res => {
-      const unsub = fb.onSnapshot(fb.collection(fb.db, colName), s => { unsub(); res(s); });
-    });
-    snap.docs.forEach(d => batch.delete(d.ref));
-    items.forEach(item => {
-      const { id, ...rest } = item;
-      batch.set(fb.doc(fb.db, colName, id), { ...rest, _updated: fb.serverTimestamp() });
-    });
-    await batch.commit();
-  }, [fb?.isConfigured]);
-
-  return { data, setData, loaded, upsert, remove, setAll };
+async function _fsGetAll(col) {
+  const snap = await _db.collection(col).get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+async function _fsAdd(col, data) {
+  const ref = await _db.collection(col).add(data);
+  return { id: ref.id, ...data };
+}
+async function _fsUpdate(col, id, data) {
+  await _db.collection(col).doc(id).update(data);
+}
+async function _fsDelete(col, id) {
+  await _db.collection(col).doc(id).delete();
+}
+async function _fsBulkSet(col, items) {
+  const batch = _db.batch();
+  const snap = await _db.collection(col).get();
+  snap.docs.forEach(d => batch.delete(d.ref));
+  items.forEach(item => {
+    const { id, ...data } = item;
+    const ref = _db.collection(col).doc(id || String(Date.now() + Math.random()));
+    batch.set(ref, data);
+  });
+  await batch.commit();
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   CSV HELPERS
-═══════════════════════════════════════════════════════════════ */
-function downloadCSV(filename, headers, rows) {
-  const esc = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-  const lines = [headers.map(esc).join(','), ...rows.map(r => r.map(esc).join(','))];
-  const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+window.DB = {
+  async load() {
+    if (_fbConnected) {
+      _state.leveranciers = await _fsGetAll("leveranciers");
+      _state.projecten    = await _fsGetAll("projecten");
+      _state.bestellingen = await _fsGetAll("bestellingen");
+      _state.assets       = await _fsGetAll("assets");
+    } else {
+      _loadLocal();
+    }
+    window.APP && window.APP.render();
+  },
+  getAll(col) { return _state[col] || []; },
+  async add(col, data) {
+    const item = { id: String(Date.now()), ...data };
+    if (_fbConnected) {
+      const saved = await _fsAdd(col, data);
+      item.id = saved.id;
+    }
+    _state[col].push({ ...item });
+    if (!_fbConnected) _saveLocal(col);
+    return item;
+  },
+  async update(col, id, data) {
+    const idx = _state[col].findIndex(x => x.id === id);
+    if (idx !== -1) _state[col][idx] = { ..._state[col][idx], ...data };
+    if (_fbConnected) await _fsUpdate(col, id, data);
+    else _saveLocal(col);
+  },
+  async delete(col, id) {
+    _state[col] = _state[col].filter(x => x.id !== id);
+    if (_fbConnected) await _fsDelete(col, id);
+    else _saveLocal(col);
+  },
+  async bulkReplace(col, items) {
+    _state[col] = items;
+    if (_fbConnected) await _fsBulkSet(col, items);
+    else _saveLocal(col);
+  },
+  isConnected() { return _fbConnected; }
+};
+</script>
+
+<script>
+// ════════════════════════════════════════════════════════════
+//  APP CONTROLLER
+// ════════════════════════════════════════════════════════════
+
+const APP = window.APP = {
+  page: 'leveranciers',
+  assetRK: null,
+  overzichtFilter: { projecten:[], subprojecten:[], regelkasten:[], type: null },
+  uitgifte: { selected: [], confirmData: null, tab: 'beschikbaar', rkFilter: '' },
+  lastUitgifteIds: [],
+  render() {
+    updateStatus();
+    renderPage(this.page);
+  }
+};
+
+// ── Navigation ──
+document.querySelectorAll('.nav-item').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(x => x.classList.remove('active'));
+    el.classList.add('active');
+    document.querySelectorAll('.page').forEach(x => x.classList.remove('active'));
+    const pg = el.dataset.page;
+    document.getElementById('page-' + pg).classList.add('active');
+    APP.page = pg;
+    APP.render();
+  });
+});
+
+function renderPage(pg) {
+  if (pg === 'leveranciers') renderLeveranciers();
+  if (pg === 'projecten')    renderProjecten();
+  if (pg === 'bestellingen') renderBestellingen();
+  if (pg === 'assetcodering') renderAssetcodering();
+  if (pg === 'overzicht')    renderOverzicht();
+  if (pg === 'uitgifte')     renderUitgifte();
+  if (pg === 'instellingen') renderInstellingen();
+}
+
+function updateStatus() {
+  const connected = window.DB && window.DB.isConnected();
+  const dot   = document.getElementById('status-dot');
+  const label = document.getElementById('status-label');
+  if (connected) {
+    dot.className = '';
+    label.textContent = '🔥 Firebase verbonden';
+  } else {
+    dot.className = 'local';
+    label.textContent = 'Lokale modus';
+  }
+}
+
+// ── Toast ──
+function toast(msg, type='info') {
+  const t = document.getElementById('toast');
+  const icons = { info:'ℹ️', success:'✅', error:'❌' };
+  const el = document.createElement('div');
+  el.className = 'toast-item';
+  el.innerHTML = `<span>${icons[type]||'ℹ️'}</span>${msg}`;
+  t.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+// ── Confirm dialog ──
+function confirm(title, msg, onOk) {
+  const ov = document.createElement('div');
+  ov.className = 'dialog-overlay';
+  ov.innerHTML = `<div class="dialog">
+    <h3>${title}</h3><p>${msg}</p>
+    <div class="dialog-actions">
+      <button class="btn btn-secondary" onclick="this.closest('.dialog-overlay').remove()">Annuleren</button>
+      <button class="btn btn-danger" id="ok-btn">Verwijderen</button>
+    </div>
+  </div>`;
+  ov.querySelector('#ok-btn').addEventListener('click', () => { ov.remove(); onOk(); });
+  document.body.appendChild(ov);
+}
+
+// ── Helpers ──
+function id() { return String(Date.now() + Math.floor(Math.random()*1000)); }
+function today() { return new Date().toISOString().slice(0,10); }
+function fmt(d) { return d ? d.split('-').reverse().join('-') : '—'; }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function csvDownload(filename, rows) {
+  const BOM = '\uFEFF';
+  const csv = BOM + rows.map(r => r.map(c => `"${String(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
   a.download = filename;
   a.click();
-  URL.revokeObjectURL(a.href);
 }
 
-function parseCSV(text) {
-  const lines = text.split(/\r?\n/).filter(l => l.trim());
-  if (lines.length < 2) return { headers: [], rows: [] };
-  const parseLine = line => {
-    const result = []; let current = ''; let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i]; const next = line[i + 1];
-      if (char === '"') { if (inQuotes && next === '"') { current += '"'; i++; } else { inQuotes = !inQuotes; } }
-      else if (char === ',' && !inQuotes) { result.push(current); current = ''; }
-      else { current += char; }
-    }
-    result.push(current);
-    return result;
+// ════════════════════════════════════════════════════════════
+//  PAGE 1: LEVERANCIERS
+// ════════════════════════════════════════════════════════════
+
+let levEditId = null;
+
+function showLeverancierForm(lev=null) {
+  levEditId = lev ? lev.id : null;
+  const html = `<div class="form-card">
+    <div class="card-header"><div class="card-title">${lev ? '✏ Leverancier bewerken' : '+ Nieuwe leverancier'}</div></div>
+    <div class="form-grid">
+      <div class="form-group"><label>Bedrijfsnaam *</label><input id="lf-naam" value="${esc(lev?.naam||'')}" placeholder="Bedrijfsnaam"></div>
+      <div class="form-group"><label>Contactpersoon</label><input id="lf-contact" value="${esc(lev?.contact||'')}" placeholder="Naam"></div>
+      <div class="form-group"><label>Telefoon</label><input id="lf-tel" value="${esc(lev?.telefoon||'')}" placeholder="+31..."></div>
+      <div class="form-group"><label>E-mail</label><input id="lf-email" value="${esc(lev?.email||'')}" placeholder="info@..."></div>
+      <div class="form-group full"><label>Opmerkingen</label><textarea id="lf-opmerking">${esc(lev?.opmerkingen||'')}</textarea></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="saveLeverancier()">✓ Opslaan</button>
+      <button class="btn btn-secondary" onclick="closeLeverancierForm()">Annuleren</button>
+    </div>
+  </div>`;
+  document.getElementById('lev-form-container').innerHTML = html;
+}
+
+function closeLeverancierForm() {
+  document.getElementById('lev-form-container').innerHTML = '';
+  levEditId = null;
+}
+
+async function saveLeverancier() {
+  const naam = document.getElementById('lf-naam').value.trim();
+  if (!naam) { toast('Bedrijfsnaam is verplicht','error'); return; }
+  const data = {
+    naam, contact: document.getElementById('lf-contact').value.trim(),
+    telefoon: document.getElementById('lf-tel').value.trim(),
+    email: document.getElementById('lf-email').value.trim(),
+    opmerkingen: document.getElementById('lf-opmerking').value.trim()
   };
-  return { headers: parseLine(lines[0]), rows: lines.slice(1).map(parseLine) };
+  if (levEditId) {
+    await DB.update('leveranciers', levEditId, data);
+    toast('Leverancier bijgewerkt','success');
+  } else {
+    await DB.add('leveranciers', data);
+    toast('Leverancier toegevoegd','success');
+  }
+  closeLeverancierForm();
+  renderLeveranciers();
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   DESIGN TOKENS
-═══════════════════════════════════════════════════════════════ */
-const C = {
-  bg:"#0a0d14", sur:"#111420", sur2:"#181c2e", bdr:"#252a3d",
-  acc:"#f59e0b", blue:"#3b82f6", grn:"#22c55e", red:"#ef4444",
-  mut:"#4a5568", txt:"#e2e8f0", purple:"#a855f7",
+function renderLeveranciers() {
+  const items = DB.getAll('leveranciers');
+  if (!items.length) {
+    document.getElementById('lev-list').innerHTML = `<div class="empty"><div class="empty-icon">🏭</div><p>Nog geen leveranciers. Klik "+ Nieuw" om te beginnen.</p></div>`;
+    return;
+  }
+  document.getElementById('lev-list').innerHTML = items.map(l => `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div style="font-size:15px;font-weight:700;margin-bottom:4px">${esc(l.naam)}</div>
+          ${l.contact ? `<div style="font-size:12px;color:var(--text2)">👤 ${esc(l.contact)}</div>` : ''}
+          ${l.telefoon ? `<div style="font-size:12px;color:var(--text2)">📞 ${esc(l.telefoon)}</div>` : ''}
+          ${l.email ? `<div style="font-size:12px;color:var(--text2)">✉️ ${esc(l.email)}</div>` : ''}
+          ${l.opmerkingen ? `<div style="font-size:12px;background:rgba(249,115,22,0.08);border-left:3px solid var(--accent);padding:4px 8px;margin-top:6px;border-radius:0 4px 4px 0">${esc(l.opmerkingen)}</div>` : ''}
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost btn-sm" onclick="showLeverancierForm(${JSON.stringify(l).replace(/"/g,'&quot;')})">✏</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteLeverancier('${l.id}','${esc(l.naam)}')">🗑</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+async function deleteLeverancier(id, naam) {
+  confirm('Leverancier verwijderen', `Weet je zeker dat je <strong>${naam}</strong> wilt verwijderen?`, async () => {
+    await DB.delete('leveranciers', id);
+    toast('Leverancier verwijderd');
+    renderLeveranciers();
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+//  PAGE 2: PROJECTEN
+// ════════════════════════════════════════════════════════════
+
+let projExpanded = {};
+
+function showProjectForm() {
+  document.getElementById('proj-form-container').innerHTML = `<div class="form-card">
+    <div class="card-header"><div class="card-title">+ Nieuw project</div></div>
+    <div class="form-grid">
+      <div class="form-group"><label>Projectnummer *</label><input id="pf-nr" placeholder="bijv. 2024-001"></div>
+      <div class="form-group"><label>Projectnaam</label><input id="pf-naam" placeholder="Projectnaam"></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="saveProject()">+ Toevoegen</button>
+      <button class="btn btn-secondary" onclick="document.getElementById('proj-form-container').innerHTML=''">Annuleren</button>
+    </div>
+  </div>`;
+}
+
+async function saveProject() {
+  const nr = document.getElementById('pf-nr').value.trim();
+  if (!nr) { toast('Projectnummer is verplicht','error'); return; }
+  await DB.add('projecten', { nummer: nr, naam: document.getElementById('pf-naam').value.trim(), subprojecten: [] });
+  document.getElementById('proj-form-container').innerHTML = '';
+  toast('Project toegevoegd','success');
+  renderProjecten();
+}
+
+function renderProjecten() {
+  const items = DB.getAll('projecten');
+  if (!items.length) {
+    document.getElementById('proj-list').innerHTML = `<div class="empty"><div class="empty-icon">📁</div><p>Nog geen projecten.</p></div>`;
+    return;
+  }
+  document.getElementById('proj-list').innerHTML = items.map(p => renderProjectCard(p)).join('');
+}
+
+function renderProjectCard(p) {
+  const expanded = projExpanded[p.id];
+  const subs = p.subprojecten || [];
+  return `<div class="card" id="proj-${p.id}">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1" onclick="toggleProject('${p.id}')">
+        <span style="color:var(--text3);font-size:12px">${expanded?'▾':'▸'}</span>
+        <div>
+          <div id="proj-title-${p.id}" style="font-weight:700">${esc(p.nummer)} — ${esc(p.naam)}</div>
+          <div style="font-size:11px;color:var(--text3)">${subs.length} subproject(en)</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-ghost btn-sm" onclick="editProject('${p.id}');event.stopPropagation()">✏</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteProject('${p.id}','${esc(p.nummer)}');event.stopPropagation()">🗑</button>
+      </div>
+    </div>
+    ${expanded ? renderSubprojecten(p) : ''}
+  </div>`;
+}
+
+function renderSubprojecten(p) {
+  const subs = p.subprojecten || [];
+  return `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+    ${subs.map((s,si) => `
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <div id="sub-title-${p.id}-${si}" style="font-size:13px;font-weight:600">${esc(s.naam)}</div>
+          <div style="display:flex;gap:4px">
+            <button class="btn btn-ghost btn-sm" onclick="editSubproject('${p.id}',${si})">✏</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteSubproject('${p.id}',${si})">🗑</button>
+          </div>
+        </div>
+        <div class="tag-list" id="rk-list-${p.id}-${si}">
+          ${(s.regelkasten||[]).map((rk,ri) => `<div class="tag"><span style="color:var(--accent);font-size:11px">${esc(rk)}</span><span class="tag-x" onclick="deleteRK('${p.id}',${si},${ri})">×</span></div>`).join('')}
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <input id="rk-input-${p.id}-${si}" placeholder="bijv. RK-101" style="max-width:150px" 
+            onkeydown="if(event.key==='Enter')addRK('${p.id}',${si})">
+          <button class="btn btn-secondary btn-sm" onclick="addRK('${p.id}',${si})">+ RK</button>
+        </div>
+      </div>`).join('')}
+    <div style="display:flex;gap:6px;margin-top:8px">
+      <input id="sub-input-${p.id}" placeholder="Subprojectnaam" style="max-width:250px"
+        onkeydown="if(event.key==='Enter')addSubproject('${p.id}')">
+      <button class="btn btn-secondary btn-sm" onclick="addSubproject('${p.id}')">+ Subproject</button>
+    </div>
+  </div>`;
+}
+
+function toggleProject(id) {
+  projExpanded[id] = !projExpanded[id];
+  renderProjecten();
+}
+
+function editProject(id) {
+  const p = DB.getAll('projecten').find(x => x.id === id);
+  const el = document.getElementById(`proj-title-${id}`);
+  el.innerHTML = `<div class="inline-edit">
+    <input id="pe-nr" value="${esc(p.nummer)}" style="width:120px">
+    <input id="pe-naam" value="${esc(p.naam)}" style="width:180px">
+    <button class="btn btn-success btn-sm" onclick="saveEditProject('${id}')">✓</button>
+    <button class="btn btn-secondary btn-sm" onclick="renderProjecten()">✕</button>
+  </div>`;
+}
+
+async function saveEditProject(id) {
+  const nr = document.getElementById('pe-nr').value.trim();
+  if (!nr) return;
+  await DB.update('projecten', id, { nummer: nr, naam: document.getElementById('pe-naam').value.trim() });
+  renderProjecten();
+}
+
+async function deleteProject(id, nr) {
+  confirm('Project verwijderen', `Verwijder project <strong>${nr}</strong> inclusief alle subprojecten?`, async () => {
+    await DB.delete('projecten', id);
+    toast('Project verwijderd');
+    renderProjecten();
+  });
+}
+
+async function addSubproject(pid) {
+  const inp = document.getElementById(`sub-input-${pid}`);
+  const naam = inp.value.trim();
+  if (!naam) return;
+  const p = DB.getAll('projecten').find(x => x.id === pid);
+  const subs = [...(p.subprojecten||[]), { naam, regelkasten: [] }];
+  await DB.update('projecten', pid, { subprojecten: subs });
+  projExpanded[pid] = true;
+  renderProjecten();
+}
+
+function editSubproject(pid, si) {
+  const p = DB.getAll('projecten').find(x => x.id === pid);
+  const el = document.getElementById(`sub-title-${pid}-${si}`);
+  el.innerHTML = `<div class="inline-edit">
+    <input id="se-naam-${pid}-${si}" value="${esc(p.subprojecten[si].naam)}" style="width:200px">
+    <button class="btn btn-success btn-sm" onclick="saveEditSub('${pid}',${si})">✓</button>
+    <button class="btn btn-secondary btn-sm" onclick="renderProjecten()">✕</button>
+  </div>`;
+}
+
+async function saveEditSub(pid, si) {
+  const naam = document.getElementById(`se-naam-${pid}-${si}`).value.trim();
+  if (!naam) return;
+  const p = DB.getAll('projecten').find(x => x.id === pid);
+  const subs = [...p.subprojecten];
+  subs[si] = { ...subs[si], naam };
+  await DB.update('projecten', pid, { subprojecten: subs });
+  renderProjecten();
+}
+
+async function deleteSubproject(pid, si) {
+  const p = DB.getAll('projecten').find(x => x.id === pid);
+  confirm('Subproject verwijderen', `Verwijder subproject <strong>${esc(p.subprojecten[si].naam)}</strong>?`, async () => {
+    const subs = p.subprojecten.filter((_,i) => i !== si);
+    await DB.update('projecten', pid, { subprojecten: subs });
+    renderProjecten();
+    toast('Subproject verwijderd');
+  });
+}
+
+async function addRK(pid, si) {
+  const inp = document.getElementById(`rk-input-${pid}-${si}`);
+  const rk = inp.value.trim();
+  if (!rk) return;
+  const p = DB.getAll('projecten').find(x => x.id === pid);
+  const subs = [...p.subprojecten];
+  subs[si] = { ...subs[si], regelkasten: [...(subs[si].regelkasten||[]), rk] };
+  await DB.update('projecten', pid, { subprojecten: subs });
+  renderProjecten();
+}
+
+async function deleteRK(pid, si, ri) {
+  const p = DB.getAll('projecten').find(x => x.id === pid);
+  const subs = [...p.subprojecten];
+  subs[si] = { ...subs[si], regelkasten: subs[si].regelkasten.filter((_,i) => i !== ri) };
+  await DB.update('projecten', pid, { subprojecten: subs });
+  renderProjecten();
+}
+
+// ════════════════════════════════════════════════════════════
+//  PAGE 3: BESTELLINGEN
+// ════════════════════════════════════════════════════════════
+
+let bestelExpanded = {};
+let bestelArtikelen = [];
+let bestelEditId = null;
+
+const STATUS_ORDER = ['geleverd','bevestigd','bestelling','offerte'];
+const STATUS_NEXT  = { offerte:'bestelling', bestelling:'bevestigd', bevestigd:'geleverd' };
+const STATUS_VELDEN = {
+  bestelling: [{ id:'io', label:'IO Nummer', req:true }, { id:'besteldatum', label:'Besteldatum', type:'date' }],
+  bevestigd:  [{ id:'ob', label:'Orderbevestigingsnr.', req:true }, { id:'levbestelnr', label:'Bestelnr. leverancier' }, { id:'verwlevering', label:'Verwachte leverdatum', type:'date' }],
+  geleverd:   [{ id:'pakbon', label:'Pakbonnummer', req:true }, { id:'leverdatum', label:'Leverdatum', type:'date' }]
 };
-const card  = x => ({ background:C.sur, border:`1px solid ${C.bdr}`, borderRadius:6, padding:20, marginBottom:14, ...x });
-const inp   = x => ({ width:"100%", background:C.bg, border:`1px solid ${C.bdr}`, color:C.txt, fontFamily:"'Courier New',monospace", fontSize:13, padding:"7px 10px", borderRadius:4, outline:"none", ...x });
-const lbl   = { display:"block", fontSize:10, fontWeight:700, color:C.mut, textTransform:"uppercase", letterSpacing:".08em", marginBottom:4 };
-const btn   = (col=C.acc, fill=true, x={}) => ({ background:fill?col:"transparent", color:fill?"#000":col, border:`1px solid ${fill?"transparent":col+"60"}`, padding:"6px 14px", borderRadius:4, cursor:"pointer", fontSize:12, fontWeight:700, display:"inline-flex", alignItems:"center", gap:5, transition:"opacity .15s", ...x });
-const ibtn  = (col, x={}) => btn(col, false, { padding:"3px 9px", fontSize:11, ...x });
 
-const ST = {
-  offerte:    { l:"Offerte",    c:"#a855f7", bg:"rgba(168,85,247,.12)" },
-  bestelling: { l:"Bestelling", c:C.acc,    bg:"rgba(245,158,11,.12)"  },
-  bevestigd:  { l:"Bevestigd",  c:C.blue,   bg:"rgba(59,130,246,.12)"  },
-  geleverd:   { l:"Geleverd",   c:C.grn,    bg:"rgba(34,197,94,.12)"   },
-  beschikbaar:{ l:"Beschikbaar",c:C.grn,    bg:"rgba(34,197,94,.12)"   },
-  uitgegeven: { l:"Uitgegeven", c:C.mut,    bg:"rgba(74,85,104,.12)"   },
-};
-
-function Bdg({ v, sm }) {
-  const c = ST[v] || { l:v, c:C.mut, bg:"rgba(74,85,104,.12)" };
-  return React.createElement("span", { style:{ background:c.bg, color:c.c, border:`1px solid ${c.c}30`, borderRadius:3, padding:sm?"1px 6px":"2px 9px", fontSize:sm?10:11, fontWeight:700, fontFamily:"'Courier New',monospace", whiteSpace:"nowrap" }}, c.l);
+function badgeStatus(s) {
+  const map = { offerte:'badge-offerte', bestelling:'badge-bestelling', bevestigd:'badge-bevestigd', geleverd:'badge-geleverd' };
+  const label = { offerte:'Offerte', bestelling:'Bestelling', bevestigd:'Bevestigd', geleverd:'Geleverd' };
+  return `<span class="badge ${map[s]||''}">${label[s]||s}</span>`;
 }
 
-// Controlled input — fixed typing bug
-function FI({ label, value, onChange, ...p }) {
-  return React.createElement("div", null,
-    label && React.createElement("label", { style:lbl }, label),
-    React.createElement("input", { style:inp(), value:value??'', onChange, ...p })
-  );
+function showBestelForm(startStatus='bestelling', edit=null) {
+  bestelEditId = edit ? edit.id : null;
+  bestelArtikelen = edit ? [...(edit.artikelen||[])] : [];
+
+  const projecten = DB.getAll('projecten');
+  const leveranciers = DB.getAll('leveranciers');
+
+  const selProjId = edit?.projectId || '';
+  const selSubIdx = edit?.subprojectIdx !== undefined ? edit.subprojectIdx : '';
+  const subs = selProjId ? (projecten.find(p => p.id === selProjId)?.subprojecten||[]) : [];
+  const heeftOfferte = edit ? !!edit.offertenr : startStatus === 'offerte';
+
+  document.getElementById('bestel-form-container').innerHTML = `<div class="form-card">
+    <div class="card-header"><div class="card-title">${edit ? '✏ Bestelling bewerken' : '+ Nieuwe bestelling'}</div></div>
+
+    <div style="font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Gegevens</div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Leverancier *</label>
+        <select id="bf-lev">
+          <option value="">— kies leverancier —</option>
+          ${leveranciers.map(l => `<option value="${l.id}" ${edit?.leverancierId===l.id?'selected':''}>${esc(l.naam)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Project *</label>
+        <select id="bf-proj" onchange="bestelOnProjChange()">
+          <option value="">— kies project —</option>
+          ${projecten.map(p => `<option value="${p.id}" ${selProjId===p.id?'selected':''}>${esc(p.nummer)} ${esc(p.naam)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Subproject</label>
+        <select id="bf-sub">
+          <option value="">— kies subproject —</option>
+          ${subs.map((s,i) => `<option value="${i}" ${String(selSubIdx)===String(i)?'selected':''}>${esc(s.naam)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>IO Nummer</label>
+        <input id="bf-io" value="${esc(edit?.io||'')}">
+      </div>
+      <div class="form-group">
+        <label>Besteldatum</label>
+        <input id="bf-besteldatum" type="date" value="${edit?.besteldatum||''}">
+      </div>
+      <div class="form-group full has-offerte-wrap">
+        <label style="text-transform:none;font-size:13px">
+          <input type="checkbox" id="bf-heeft-offerte" ${heeftOfferte?'checked':''} onchange="bestelToggleOfferte()"> 
+          Heeft offerte
+        </label>
+      </div>
+      <div id="offerte-velden" style="${heeftOfferte?'':'display:none'}" class="form-group" style="grid-column:1/-1">
+        <div class="form-grid" style="margin:0">
+          <div class="form-group"><label>Offertenummer</label><input id="bf-offertenr" value="${esc(edit?.offertenr||'')}"></div>
+          <div class="form-group"><label>Offertedatum</label><input id="bf-offertedatum" type="date" value="${edit?.offertedatum||''}"></div>
+        </div>
+      </div>
+      <div class="form-group"><label>Orderbevestigingsnr.</label><input id="bf-ob" value="${esc(edit?.ob||'')}"></div>
+      <div class="form-group"><label>Bestelnr. leverancier</label><input id="bf-levbestelnr" value="${esc(edit?.levbestelnr||'')}"></div>
+      <div class="form-group"><label>Verwachte leverdatum</label><input id="bf-verwlevering" type="date" value="${edit?.verwlevering||''}"></div>
+      <div class="form-group"><label>Pakbonnummer</label><input id="bf-pakbon" value="${esc(edit?.pakbon||'')}"></div>
+      <div class="form-group"><label>Leverdatum</label><input id="bf-leverdatum" type="date" value="${edit?.leverdatum||''}"></div>
+    </div>
+
+    <div style="font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin:16px 0 10px">Artikelen</div>
+    <div id="bf-artikel-list" style="margin-bottom:10px"></div>
+    <div class="form-grid" style="margin-bottom:8px">
+      <div class="form-group"><label>Merk *</label><input id="bf-merk" placeholder="Merk"></div>
+      <div class="form-group"><label>Type *</label><input id="bf-type" placeholder="Type/artikel"></div>
+      <div class="form-group"><label>Aantal</label><input id="bf-aantal" type="number" min="1" value="1" style="max-width:100px"></div>
+      <div class="form-group"><label>Opmerking</label><input id="bf-opm" placeholder="Optioneel"></div>
+    </div>
+    <button class="btn btn-secondary btn-sm" onclick="bestelAddArtikel()">+ Toevoegen</button>
+
+    <div class="form-actions" style="margin-top:16px">
+      <button class="btn btn-primary" id="bestel-save-btn" onclick="saveBestelling('${startStatus}')">✓ Opslaan</button>
+      <button class="btn btn-secondary" onclick="closeBestelForm()">Annuleren</button>
+    </div>
+  </div>`;
+  renderBestelArtikelen();
 }
-function FT({ label, value, onChange, ...p }) {
-  return React.createElement("div", null,
-    React.createElement("label", { style:lbl }, label),
-    React.createElement("textarea", { style:inp({ height:60, resize:"vertical" }), value:value??'', onChange, ...p })
-  );
-}
-// Controlled select
-function FS({ label, opts, value, onChange }) {
-  return React.createElement("div", null,
-    label && React.createElement("label", { style:lbl }, label),
-    React.createElement("select", { style:inp(), value:value??'', onChange },
-      opts.map(o => React.createElement("option", { key:o.v, value:o.v }, o.l))
-    )
-  );
-}
-function SH({ t }) {
-  return React.createElement("div", { style:{ fontSize:10, fontWeight:700, color:C.mut, textTransform:"uppercase", letterSpacing:".1em", marginBottom:14 }}, t);
-}
-function PH({ title, action }) {
-  return React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }},
-    React.createElement("div", { style:{ fontSize:11, fontWeight:700, color:C.mut, textTransform:"uppercase", letterSpacing:".1em" }}, title),
-    React.createElement("div", { style:{ display:"flex", gap:8 }}, action)
-  );
-}
-function InfoChip({ label, value, color }) {
-  return React.createElement("div", { style:{ background:C.bg, border:`1px solid ${C.bdr}`, borderRadius:4, padding:"7px 11px" }},
-    React.createElement("div", { style:{ fontSize:10, color:C.mut, fontWeight:700, textTransform:"uppercase", letterSpacing:".05em", marginBottom:2 }}, label),
-    React.createElement("div", { style:{ fontFamily:"'Courier New',monospace", fontSize:12, fontWeight:700, color:color||C.txt }}, value)
-  );
-}
-function CsvBtn({ onClick }) {
-  return React.createElement("button", { onClick, style:btn(C.grn, false, { padding:"5px 11px", fontSize:11 }) }, "⬇ CSV");
+
+function closeBestelForm() {
+  document.getElementById('bestel-form-container').innerHTML = '';
+  bestelEditId = null;
+  bestelArtikelen = [];
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   FIREBASE STATUS BANNER
-═══════════════════════════════════════════════════════════════ */
-function FbBanner({ fb }) {
-  if (!fb) return null;
-  if (fb.isConfigured) return React.createElement("div", { style:{ background:"rgba(34,197,94,.08)", border:`1px solid ${C.grn}30`, borderRadius:4, padding:"6px 12px", marginBottom:14, fontSize:11, color:C.grn, display:"flex", alignItems:"center", gap:8 }},
-    React.createElement("span", { style:{ width:6, height:6, borderRadius:"50%", background:C.grn, display:"inline-block", boxShadow:`0 0 6px ${C.grn}` }}),
-    "Firebase verbonden — data wordt automatisch opgeslagen"
-  );
-  return React.createElement("div", { style:{ background:"rgba(245,158,11,.08)", border:`1px solid ${C.acc}30`, borderRadius:4, padding:"8px 14px", marginBottom:14, fontSize:11, color:C.acc }},
-    "⚠ Firebase niet geconfigureerd — data wordt niet opgeslagen tussen sessies. Ga naar ⚙ Instellingen voor setup-instructies."
-  );
+function bestelToggleOfferte() {
+  const checked = document.getElementById('bf-heeft-offerte').checked;
+  document.getElementById('offerte-velden').style.display = checked ? '' : 'none';
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   NAV
-═══════════════════════════════════════════════════════════════ */
-const NAV = [
-  { id:"leveranciers",  icon:"🏭", label:"Leveranciers" },
-  { id:"projecten",     icon:"📁", label:"Projecten" },
-  { id:"bestellingen",  icon:"📋", label:"Bestellingen" },
-  { id:"assetcodering", icon:"🏷", label:"Assetcodering" },
-  { id:"overzicht",     icon:"📊", label:"Overzicht" },
-  { id:"uitgifte",      icon:"📤", label:"Uitgifte" },
-  { id:"instellingen",  icon:"⚙️", label:"Instellingen" },
-];
+function bestelOnProjChange() {
+  const pid = document.getElementById('bf-proj').value;
+  const proj = DB.getAll('projecten').find(p => p.id === pid);
+  const subs = proj?.subprojecten || [];
+  const sel = document.getElementById('bf-sub');
+  sel.innerHTML = `<option value="">— kies subproject —</option>${subs.map((s,i) => `<option value="${i}">${esc(s.naam)}</option>`).join('')}`;
+}
 
-/* ═══════════════════════════════════════════════════════════════
-   APP ROOT
-═══════════════════════════════════════════════════════════════ */
-function App() {
-  const fb = useFirebase();
-  const [page, setPage] = useState("bestellingen");
+function renderBestelArtikelen() {
+  const el = document.getElementById('bf-artikel-list');
+  if (!el) return;
+  if (!bestelArtikelen.length) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div class="tbl-wrap"><table>
+    <thead><tr><th>Merk</th><th>Type</th><th>Aantal</th><th>Opmerking</th><th></th></tr></thead>
+    <tbody>${bestelArtikelen.map((a,i) => `<tr>
+      <td>${esc(a.merk)}</td><td>${esc(a.type)}</td>
+      <td><span class="badge badge-orange" style="font-family:var(--font-mono)">${a.aantal}</span></td>
+      <td>${esc(a.opmerking||'')}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="bestelRemoveArtikel(${i})">✕</button></td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+  const btn = document.getElementById('bestel-save-btn');
+  if (btn) btn.textContent = `✓ Opslaan (${bestelArtikelen.length} artikel${bestelArtikelen.length>1?'en':''})`;
+}
 
-  const levStore   = useFirestoreCollection(fb, "leveranciers", D_LEV);
-  const prjStore   = useFirestoreCollection(fb, "projecten",    D_PRJ);
-  const bestStore  = useFirestoreCollection(fb, "bestellingen", D_BEST);
-  const assetStore = useFirestoreCollection(fb, "assets",       D_ASSETS);
+function bestelAddArtikel() {
+  const merk = document.getElementById('bf-merk').value.trim();
+  const type = document.getElementById('bf-type').value.trim();
+  if (!merk || !type) { toast('Merk en type zijn verplicht','error'); return; }
+  bestelArtikelen.push({ merk, type, aantal: parseInt(document.getElementById('bf-aantal').value)||1, opmerking: document.getElementById('bf-opm').value.trim() });
+  document.getElementById('bf-merk').value = '';
+  document.getElementById('bf-type').value = '';
+  document.getElementById('bf-aantal').value = '1';
+  document.getElementById('bf-opm').value = '';
+  renderBestelArtikelen();
+}
 
-  const levs   = levStore.data;
-  const prjs   = prjStore.data;
-  const bests  = bestStore.data;
-  const assets = assetStore.data;
+function bestelRemoveArtikel(i) {
+  bestelArtikelen.splice(i, 1);
+  renderBestelArtikelen();
+}
 
-  const setLevs   = useCallback((fn) => { const next = typeof fn === 'function' ? fn(levStore.data)   : fn; levStore.setData(next);   if (fb?.isConfigured) next.forEach(x => levStore.upsert(x));   }, [levStore, fb]);
-  const setPrjs   = useCallback((fn) => { const next = typeof fn === 'function' ? fn(prjStore.data)   : fn; prjStore.setData(next);   if (fb?.isConfigured) next.forEach(x => prjStore.upsert(x));   }, [prjStore, fb]);
-  const setBests  = useCallback((fn) => { const next = typeof fn === 'function' ? fn(bestStore.data)  : fn; bestStore.setData(next);  if (fb?.isConfigured) next.forEach(x => bestStore.upsert(x));  }, [bestStore, fb]);
-  const setAssets = useCallback((fn) => { const next = typeof fn === 'function' ? fn(assetStore.data) : fn; assetStore.setData(next); if (fb?.isConfigured) next.forEach(x => assetStore.upsert(x)); }, [assetStore, fb]);
+async function saveBestelling(startStatus) {
+  const levId  = document.getElementById('bf-lev').value;
+  const projId = document.getElementById('bf-proj').value;
+  if (!levId)  { toast('Leverancier is verplicht','error'); return; }
+  if (!projId) { toast('Project is verplicht','error'); return; }
+  if (!bestelArtikelen.length) { toast('Voeg minimaal 1 artikel toe','error'); return; }
 
-  // For single upsert/delete operations that need direct control
-  const upsertLev   = async (item) => { levStore.setData(p => p.find(x=>x.id===item.id)?p.map(x=>x.id===item.id?item:x):[...p,item]); await levStore.upsert(item); };
-  const deleteLev   = async (id)   => { levStore.setData(p => p.filter(x=>x.id!==id)); await levStore.remove(id); };
-  const upsertPrj   = async (item) => { prjStore.setData(p => p.find(x=>x.id===item.id)?p.map(x=>x.id===item.id?item:x):[...p,item]); await prjStore.upsert(item); };
-  const deletePrj   = async (id)   => { prjStore.setData(p => p.filter(x=>x.id!==id)); await prjStore.remove(id); };
-  const upsertBest  = async (item) => { bestStore.setData(p => p.find(x=>x.id===item.id)?p.map(x=>x.id===item.id?item:x):[...p,item]); await bestStore.upsert(item); };
-  const deleteBest  = async (id)   => { bestStore.setData(p => p.filter(x=>x.id!==id)); await bestStore.remove(id); };
-  const upsertAsset = async (item) => { assetStore.setData(p => p.find(x=>x.id===item.id)?p.map(x=>x.id===item.id?item:x):[...p,item]); await assetStore.upsert(item); };
-  const deleteAsset = async (id)   => { assetStore.setData(p => p.filter(x=>x.id!==id)); await assetStore.remove(id); };
+  const lev  = DB.getAll('leveranciers').find(x => x.id === levId);
+  const proj = DB.getAll('projecten').find(x => x.id === projId);
+  const subIdx = document.getElementById('bf-sub').value;
+  const sub = subIdx !== '' ? proj.subprojecten[subIdx] : null;
+  const heeftOfferte = document.getElementById('bf-heeft-offerte').checked;
 
-  const allRK = useMemo(() =>
-    prjs.flatMap(p => p.subs.flatMap(s =>
-      s.rks.map(r => ({ v:r, l:`${r}  —  ${p.nr} / ${s.naam}`, prjId:p.id, subId:s.id }))
-    )), [prjs]);
+  const data = {
+    status: bestelEditId ? (DB.getAll('bestellingen').find(x => x.id === bestelEditId)?.status || startStatus) : startStatus,
+    leverancierId: levId, leverancierNaam: lev?.naam || '',
+    projectId: projId, projectNummer: proj?.nummer || '', projectNaam: proj?.naam || '',
+    subprojectIdx: subIdx, subprojectNaam: sub?.naam || '',
+    io: document.getElementById('bf-io').value.trim(),
+    besteldatum: document.getElementById('bf-besteldatum').value,
+    offertenr:   heeftOfferte ? document.getElementById('bf-offertenr').value.trim()   : '',
+    offertedatum: heeftOfferte ? document.getElementById('bf-offertedatum').value : '',
+    ob:         document.getElementById('bf-ob').value.trim(),
+    levbestelnr: document.getElementById('bf-levbestelnr').value.trim(),
+    verwlevering: document.getElementById('bf-verwlevering').value,
+    pakbon:     document.getElementById('bf-pakbon').value.trim(),
+    leverdatum: document.getElementById('bf-leverdatum').value,
+    artikelen:  bestelArtikelen
+  };
 
-  // FIXED: merge same merk+type across delivered orders
-  const availArts = useMemo(() => {
-    const assetCount = {};
-    assets.forEach(a => {
-      const k = `${a.merk}||${a.type}`;
-      assetCount[k] = (assetCount[k] || 0) + 1;
+  if (bestelEditId) {
+    await DB.update('bestellingen', bestelEditId, data);
+    toast('Bestelling bijgewerkt','success');
+  } else {
+    await DB.add('bestellingen', data);
+    toast('Bestelling opgeslagen','success');
+  }
+  closeBestelForm();
+  renderBestellingen();
+}
+
+function renderBestellingen() {
+  const items = DB.getAll('bestellingen');
+  if (!items.length) {
+    document.getElementById('bestel-list').innerHTML = `<div class="empty"><div class="empty-icon">📋</div><p>Nog geen bestellingen.</p></div>`;
+    return;
+  }
+
+  // sort by status order
+  const sorted = [...items].sort((a,b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status));
+
+  document.getElementById('bestel-list').innerHTML = sorted.map(b => {
+    const exp = bestelExpanded[b.id];
+    const nextStatus = STATUS_NEXT[b.status];
+    const statusLabels = ['offerte','bestelling','bevestigd','geleverd'];
+    return `<div class="order-card ${exp?'expanded':''}" id="bc-${b.id}">
+      <div class="order-card-header" onclick="toggleBestel('${b.id}')">
+        <span class="expand-arrow">▸</span>
+        ${badgeStatus(b.status)}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600">${esc(b.io||b.offertenr||'—')}</div>
+          <div style="font-size:11px;color:var(--text2)">${esc(b.leverancierNaam)}</div>
+        </div>
+        <span class="badge badge-blue" style="margin-right:4px">${esc(b.projectNummer)}</span>
+        <span style="font-size:11px;color:var(--text2);margin-right:8px">${esc(b.subprojectNaam||'—')}</span>
+        <span class="badge badge-orange">${b.artikelen?.length||0} artikel${(b.artikelen?.length||0)!==1?'en':''}</span>
+        <div style="display:flex;gap:4px;margin-left:10px" onclick="event.stopPropagation()">
+          <button class="btn btn-ghost btn-sm" onclick="showBestelForm('${b.status}',${JSON.stringify(b).replace(/"/g,'&quot;')})">✏</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteBestelling('${b.id}')">🗑</button>
+        </div>
+      </div>
+      ${exp ? `<div class="order-card-body">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+          ${b.offertenr ? `<div class="chip"><span>Offerte</span><strong>${esc(b.offertenr)}</strong>${b.offertedatum?`<span>${fmt(b.offertedatum)}</span>`:''}</div>` : ''}
+          ${b.io ? `<div class="chip"><span>IO</span><strong>${esc(b.io)}</strong></div>` : ''}
+          ${b.besteldatum ? `<div class="chip"><span>Besteld</span><strong>${fmt(b.besteldatum)}</strong></div>` : ''}
+          ${b.ob ? `<div class="chip"><span>OB</span><strong>${esc(b.ob)}</strong></div>` : ''}
+          ${b.levbestelnr ? `<div class="chip"><span>Lev.nr</span><strong>${esc(b.levbestelnr)}</strong></div>` : ''}
+          ${b.verwlevering ? `<div class="chip"><span>Verwacht</span><strong>${fmt(b.verwlevering)}</strong></div>` : ''}
+          ${b.pakbon ? `<div class="chip"><span>Pakbon</span><strong>${esc(b.pakbon)}</strong></div>` : ''}
+          ${b.leverdatum ? `<div class="chip"><span>Geleverd</span><strong>${fmt(b.leverdatum)}</strong></div>` : ''}
+        </div>
+
+        ${b.artikelen?.length ? `<div class="tbl-wrap" style="margin-bottom:14px">
+          <table><thead><tr><th>Merk</th><th>Type</th><th>Aantal</th><th>Opmerking</th></tr></thead>
+          <tbody>${b.artikelen.map(a => `<tr><td>${esc(a.merk)}</td><td>${esc(a.type)}</td>
+            <td><span class="badge badge-orange">${a.aantal}</span></td>
+            <td>${esc(a.opmerking||'')}</td></tr>`).join('')}</tbody></table>
+        </div>` : ''}
+
+        <div class="status-flow">
+          ${statusLabels.map((s,i) => {
+            const idx = statusLabels.indexOf(b.status);
+            const cls = i < idx ? 'done' : (i === idx ? 'current' : '');
+            return `${i>0?'<span class="status-arrow">→</span>':''}<div class="status-step ${cls}"><span class="dot"></span>${s}</div>`;
+          }).join('')}
+        </div>
+
+        ${nextStatus ? `<div id="flow-form-${b.id}" style="margin-top:10px">
+          <button class="btn btn-primary btn-sm" onclick="showFlowForm('${b.id}','${nextStatus}')">→ Zet door naar ${nextStatus}</button>
+        </div>` : ''}
+      </div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function toggleBestel(id) {
+  bestelExpanded[id] = !bestelExpanded[id];
+  renderBestellingen();
+}
+
+function showFlowForm(bid, nextStatus) {
+  const velden = STATUS_VELDEN[nextStatus] || [];
+  const el = document.getElementById(`flow-form-${bid}`);
+  el.innerHTML = `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-top:8px">
+    <div style="font-size:13px;font-weight:600;margin-bottom:10px">Doorsturen naar <strong>${nextStatus}</strong></div>
+    <div class="form-grid">
+      ${velden.map(f => `<div class="form-group">
+        <label>${f.label}${f.req?' *':''}</label>
+        <input id="ff-${f.id}" type="${f.type||'text'}">
+      </div>`).join('')}
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary btn-sm" onclick="confirmFlow('${bid}','${nextStatus}')">✓ Bevestigen</button>
+      <button class="btn btn-secondary btn-sm" onclick="renderBestellingen()">Annuleren</button>
+    </div>
+  </div>`;
+}
+
+async function confirmFlow(bid, nextStatus) {
+  const velden = STATUS_VELDEN[nextStatus] || [];
+  for (const f of velden) {
+    if (f.req && !document.getElementById(`ff-${f.id}`)?.value.trim()) {
+      toast(`${f.label} is verplicht`, 'error'); return;
+    }
+  }
+  const data = { status: nextStatus };
+  velden.forEach(f => { data[f.id] = document.getElementById(`ff-${f.id}`).value.trim(); });
+  await DB.update('bestellingen', bid, data);
+  toast(`Bestelling doorgezet naar ${nextStatus}`, 'success');
+  renderBestellingen();
+}
+
+async function deleteBestelling(id) {
+  confirm('Bestelling verwijderen', 'Weet je zeker dat je deze bestelling wilt verwijderen?', async () => {
+    await DB.delete('bestellingen', id);
+    toast('Bestelling verwijderd');
+    renderBestellingen();
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+//  PAGE 4: ASSETCODERING
+// ════════════════════════════════════════════════════════════
+
+function renderAssetcodering() {
+  // Beschikbare artikelen uit geleverde bestellingen
+  const geleverd = DB.getAll('bestellingen').filter(b => b.status === 'geleverd');
+  const totaalMap = {};
+  geleverd.forEach(b => {
+    (b.artikelen||[]).forEach(a => {
+      const key = `${a.merk}|||${a.type}`;
+      totaalMap[key] = (totaalMap[key] || { merk: a.merk, type: a.type, totaal: 0 });
+      totaalMap[key].totaal += (a.aantal || 1);
     });
+  });
 
-    const merged = {};
-    bests.filter(b => b.status === "geleverd").forEach(b => {
-      b.arts.forEach(a => {
-        const k = `${a.merk}||${a.type}`;
-        if (!merged[k]) {
-          merged[k] = { merk: a.merk, type: a.type, totalN: 0, artIds: [], id: k };
-        }
-        merged[k].totalN += Number(a.n);
-        merged[k].artIds.push(a.id);
+  const assets = DB.getAll('assets');
+  const gecodeerd = {};
+  assets.forEach(a => {
+    const key = `${a.merk}|||${a.type}`;
+    gecodeerd[key] = (gecodeerd[key] || 0) + 1;
+  });
+
+  const beschikbaar = Object.entries(totaalMap).map(([k, v]) => ({
+    ...v, gecodeerd: gecodeerd[k]||0, resterend: v.totaal - (gecodeerd[k]||0)
+  })).filter(x => x.resterend > 0);
+
+  // Regelkasten uit projecten
+  const alleRK = [];
+  DB.getAll('projecten').forEach(p => {
+    (p.subprojecten||[]).forEach(s => {
+      (s.regelkasten||[]).forEach(rk => { if (!alleRK.includes(rk)) alleRK.push(rk); });
+    });
+  });
+
+  const selectedRK = APP.assetRK || alleRK[0] || '';
+  const rkAssets = assets.filter(a => a.regelkast === selectedRK);
+
+  document.getElementById('asset-content').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <!-- Nieuwe codering -->
+      <div class="card">
+        <div class="card-header"><div class="card-title">🆕 Nieuwe codering aanmaken</div></div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Regelkast</label>
+            <select id="ac-rk" onchange="assetOnRK()">
+              <option value="">— kies regelkast —</option>
+              ${alleRK.map(rk => `<option value="${esc(rk)}" ${rk===selectedRK?'selected':''}>${esc(rk)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Opnemercode</label>
+            <input id="ac-code" placeholder="bijv. FT-103">
+          </div>
+          <div class="form-group full">
+            <label>Artikel</label>
+            <select id="ac-artikel">
+              <option value="">— kies artikel —</option>
+              ${beschikbaar.map((a,i) => `<option value="${i}">${esc(a.merk)} — ${esc(a.type)} (${a.resterend} beschikbaar)</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" onclick="addAsset(${JSON.stringify(beschikbaar).replace(/"/g,'&quot;')})">+ Toevoegen</button>
+        </div>
+      </div>
+
+      <!-- Beschikbare voorraad -->
+      <div class="card">
+        <div class="card-header"><div class="card-title">📦 Beschikbare voorraad</div></div>
+        ${beschikbaar.length ? beschikbaar.map(a => `
+          <div class="inv-item">
+            <div class="inv-header">
+              <div class="inv-name">${esc(a.merk)} <span style="color:var(--text2)">${esc(a.type)}</span></div>
+              <div class="inv-count"><span class="count-green">${a.resterend}</span> / ${a.totaal}</div>
+            </div>
+            <div class="progress"><div class="progress-bar" style="width:${Math.round(a.gecodeerd/a.totaal*100)}%"></div></div>
+          </div>`).join('') : `<div class="empty" style="padding:24px"><p>Geen beschikbare voorraad</p></div>`}
+      </div>
+    </div>
+
+    <!-- Assets van geselecteerde regelkast -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">🏷 Assets — <span style="color:var(--accent)">${esc(selectedRK||'geen regelkast geselecteerd')}</span></div>
+      </div>
+      ${rkAssets.length ? `<div class="tbl-wrap"><table>
+        <thead><tr><th>Opnemercode</th><th>Merk</th><th>Type</th><th>Status</th><th></th></tr></thead>
+        <tbody>${rkAssets.map(a => `<tr>
+          <td><span style="color:var(--accent);font-family:var(--font-mono);font-weight:600" id="asset-code-${a.id}">${esc(a.code)}</span></td>
+          <td>${esc(a.merk)}</td><td>${esc(a.type)}</td>
+          <td><span class="badge ${a.status==='uitgegeven'?'badge-red':'badge-green'}">${a.status||'beschikbaar'}</span></td>
+          <td class="td-actions">
+            <button class="btn btn-ghost btn-sm" onclick="editAssetCode('${a.id}')">✏</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteAsset('${a.id}')">🗑</button>
+          </td>
+        </tr>`).join('')}</tbody>
+      </table></div>` : `<div class="empty" style="padding:24px"><p>Geen assets voor deze regelkast</p></div>`}
+    </div>`;
+}
+
+function assetOnRK() {
+  APP.assetRK = document.getElementById('ac-rk').value;
+  renderAssetcodering();
+}
+
+async function addAsset(beschikbaar) {
+  const rk = document.getElementById('ac-rk').value;
+  const code = document.getElementById('ac-code').value.trim();
+  const idx = document.getElementById('ac-artikel').value;
+  if (!rk)   { toast('Kies een regelkast', 'error'); return; }
+  if (!code)  { toast('Vul een opnemercode in', 'error'); return; }
+  if (idx === '') { toast('Kies een artikel', 'error'); return; }
+  const art = beschikbaar[parseInt(idx)];
+  await DB.add('assets', { regelkast: rk, code, merk: art.merk, type: art.type, status: 'beschikbaar', aangemaakt: today() });
+  APP.assetRK = rk;
+  toast('Asset toegevoegd', 'success');
+  renderAssetcodering();
+}
+
+function editAssetCode(id) {
+  const a = DB.getAll('assets').find(x => x.id === id);
+  const el = document.getElementById(`asset-code-${id}`);
+  el.outerHTML = `<div class="inline-edit" id="asset-code-${id}">
+    <input id="asset-code-input-${id}" value="${esc(a.code)}" style="width:120px;color:var(--text)"
+      onkeydown="if(event.key==='Enter')saveAssetCode('${id}')">
+    <button class="btn btn-success btn-sm" onclick="saveAssetCode('${id}')">✓</button>
+    <button class="btn btn-secondary btn-sm" onclick="renderAssetcodering()">✕</button>
+  </div>`;
+}
+
+async function saveAssetCode(id) {
+  const val = document.getElementById(`asset-code-input-${id}`)?.value.trim();
+  if (!val) return;
+  await DB.update('assets', id, { code: val });
+  toast('Code bijgewerkt', 'success');
+  renderAssetcodering();
+}
+
+async function deleteAsset(id) {
+  confirm('Asset verwijderen', 'Weet je zeker dat je deze asset wilt verwijderen?', async () => {
+    await DB.delete('assets', id);
+    toast('Asset verwijderd');
+    renderAssetcodering();
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+//  PAGE 5: OVERZICHT
+// ════════════════════════════════════════════════════════════
+
+function renderOverzicht() {
+  const assets  = DB.getAll('assets');
+  const projecten = DB.getAll('projecten');
+  const f = APP.overzichtFilter;
+
+  // Build RK→proj/sub map
+  const rkMap = {};
+  projecten.forEach(p => {
+    (p.subprojecten||[]).forEach(s => {
+      (s.regelkasten||[]).forEach(rk => {
+        rkMap[rk] = { proj: p, sub: s };
       });
     });
+  });
 
-    return Object.values(merged).map(m => {
-      const coded = assetCount[m.id] || 0;
-      return { ...m, coded, remaining: m.totalN - coded };
-    }).filter(m => m.remaining > 0);
-  }, [bests, assets]);
-
-  const [lastRK, setLastRK] = useState("RK-101");
-
-  const shared = {
-    fb, levs, setLevs, upsertLev, deleteLev,
-    prjs, setPrjs, upsertPrj, deletePrj,
-    bests, setBests, upsertBest, deleteBest,
-    assets, setAssets, upsertAsset, deleteAsset,
-    allRK, availArts, lastRK, setLastRK,
-    levStore, prjStore, bestStore, assetStore
-  };
-
-  return React.createElement("div", { style:{ display:"flex", height:"100vh", background:C.bg, color:C.txt, fontFamily:"'Courier New',monospace", fontSize:14 }},
-    React.createElement("div", { style:{ width:172, background:C.sur, borderRight:`1px solid ${C.bdr}`, display:"flex", flexDirection:"column", flexShrink:0 }},
-      React.createElement("div", { style:{ padding:"14px 12px", borderBottom:`1px solid ${C.bdr}` }},
-        React.createElement("div", { style:{ fontWeight:800, fontSize:11, color:C.acc, letterSpacing:".08em" }}, "▣ ARTIKELREG."),
-        React.createElement("div", { style:{ fontSize:10, color:C.mut, marginTop:2 }},
-          fb?.isConfigured
-            ? React.createElement("span", { style:{ color:C.grn }}, "● Firebase")
-            : React.createElement("span", { style:{ color:C.acc, animation:"pulse 2s infinite" }}, "○ Lokaal")
-        )
-      ),
-      React.createElement("nav", { style:{ padding:6, flex:1 }},
-        NAV.map(n => React.createElement("button", {
-          key:n.id, onClick:()=>setPage(n.id),
-          style:{ display:"flex", alignItems:"center", gap:8, width:"100%", padding:"7px 10px",
-            background:page===n.id?"rgba(245,158,11,.1)":"none",
-            border:page===n.id?`1px solid ${C.acc}30`:"1px solid transparent",
-            color:page===n.id?C.acc:C.mut, borderRadius:4, cursor:"pointer",
-            fontSize:11, fontWeight:page===n.id?700:400, marginBottom:1, textAlign:"left" }
-        }, React.createElement("span", { style:{ fontSize:14 }}, n.icon), n.label))
-      )
-    ),
-    React.createElement("div", { style:{ flex:1, overflow:"auto", padding:22 }},
-      React.createElement(FbBanner, { fb }),
-      page==="leveranciers"  && React.createElement(LevPage,   shared),
-      page==="projecten"     && React.createElement(PrjPage,   shared),
-      page==="bestellingen"  && React.createElement(BestPage,  shared),
-      page==="assetcodering" && React.createElement(AssetPage, shared),
-      page==="overzicht"     && React.createElement(OvzPage,   shared),
-      page==="uitgifte"      && React.createElement(UitPage,   shared),
-      page==="instellingen"  && React.createElement(InstPage,  shared)
-    )
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   LEVERANCIERS
-═══════════════════════════════════════════════════════════════ */
-function LevPage({ levs, upsertLev, deleteLev }) {
-  const empty = { naam:"", contact:"", tel:"", email:"", opmerking:"" };
-  const [form, setForm] = useState(null);
-  const set = k => e => setForm(p => ({...p, [k]:e.target.value}));
-
-  const save = async () => {
-    if (!form?.naam) return;
-    const item = form.id ? form : {...form, id:`l-${Date.now()}`};
-    await upsertLev(item);
-    setForm(null);
-  };
-
-  const del = async l => {
-    if (!window.confirm(`"${l.naam}" verwijderen?`)) return;
-    await deleteLev(l.id);
-  };
-
-  const csvLevs = () => downloadCSV('leveranciers.csv',
-    ['Naam','Contactpersoon','Telefoon','E-mail','Opmerkingen'],
-    levs.map(l => [l.naam, l.contact, l.tel, l.email, l.opmerking])
-  );
-
-  return React.createElement("div", { style:{ maxWidth:900 }},
-    React.createElement(PH, { title:`Leveranciers (${levs.length})`, action:
-      React.createElement(React.Fragment, null,
-        React.createElement(CsvBtn, { onClick:csvLevs }),
-        React.createElement("button", { onClick:()=>setForm(empty), style:btn() }, "+ Nieuw")
-      )
-    }),
-    form && React.createElement("div", { style:card({ border:`1px solid ${C.acc}40`, marginBottom:20 })},
-      React.createElement(SH, { t:form.id?"Leverancier bewerken":"Nieuwe leverancier" }),
-      React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:14, marginBottom:14 }},
-        React.createElement(FI, { label:"Bedrijfsnaam *", value:form.naam,    onChange:set("naam"),    placeholder:"Bedrijf BV" }),
-        React.createElement(FI, { label:"Contactpersoon", value:form.contact, onChange:set("contact"), placeholder:"Naam" }),
-        React.createElement(FI, { label:"Telefoon",       value:form.tel,     onChange:set("tel"),     placeholder:"06-..." })
-      ),
-      React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 2fr", gap:14, marginBottom:16 }},
-        React.createElement(FI, { label:"E-mail",      value:form.email,     onChange:set("email"),     placeholder:"info@..." }),
-        React.createElement(FT, { label:"Opmerkingen", value:form.opmerking, onChange:set("opmerking") })
-      ),
-      React.createElement("div", { style:{ display:"flex", gap:8 }},
-        React.createElement("button", { onClick:save, style:btn() }, "✓ Opslaan"),
-        React.createElement("button", { onClick:()=>setForm(null), style:btn(C.mut,false) }, "Annuleren")
-      )
-    ),
-    levs.map(l => React.createElement("div", { key:l.id, style:card({ display:"flex", alignItems:"start", gap:16 })},
-      React.createElement("div", { style:{ flex:1 }},
-        React.createElement("div", { style:{ fontWeight:700, fontSize:14, marginBottom:6 }}, l.naam),
-        React.createElement("div", { style:{ display:"flex", gap:20, fontSize:12, color:C.mut, flexWrap:"wrap" }},
-          l.contact && React.createElement("span", null, "👤 ", l.contact),
-          l.tel     && React.createElement("span", null, "📞 ", l.tel),
-          l.email   && React.createElement("span", null, "✉ ", l.email)
-        ),
-        l.opmerking && React.createElement("div", { style:{ marginTop:8, fontSize:12, color:"#94a3b8", background:C.sur2, borderRadius:3, padding:"6px 10px", borderLeft:`3px solid ${C.acc}50` }}, l.opmerking)
-      ),
-      React.createElement("div", { style:{ display:"flex", gap:6, flexShrink:0 }},
-        React.createElement("button", { onClick:()=>setForm({...l}), style:ibtn(C.blue) }, "✏ Bewerken"),
-        React.createElement("button", { onClick:()=>del(l), style:ibtn(C.red) }, "🗑 Verwijderen")
-      )
-    ))
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   PROJECTEN
-═══════════════════════════════════════════════════════════════ */
-function PrjPage({ prjs, upsertPrj, deletePrj, setPrjs }) {
-  const [exp,     setExp]     = useState({});
-  const [adding,  setAdding]  = useState(null);
-  const [val,     setVal]     = useState("");
-  const [val2,    setVal2]    = useState("");
-  const [editPrj, setEditPrj] = useState(null);
-  const [editSub, setEditSub] = useState(null);
-
-  const toggle = id => setExp(p => ({...p, [id]:!p[id]}));
-
-  const doAdd = async () => {
-    if (!val.trim()) return;
-    if (adding.type==="prj") {
-      const item = { id:`p-${Date.now()}`, nr:val.trim(), naam:val2.trim(), subs:[] };
-      await upsertPrj(item);
-    } else if (adding.type==="sub") {
-      const prj = prjs.find(p => p.id===adding.prjId);
-      if (!prj) return;
-      const updated = {...prj, subs:[...prj.subs, {id:`s-${Date.now()}`, naam:val.trim(), rks:[]}]};
-      await upsertPrj(updated);
-    } else if (adding.type==="rk") {
-      for (const prj of prjs) {
-        const sub = prj.subs.find(s => s.id===adding.subId);
-        if (sub) {
-          const updated = {...prj, subs:prj.subs.map(s => s.id===adding.subId ? {...s, rks:[...s.rks, val.trim()]} : s)};
-          await upsertPrj(updated);
-          break;
-        }
+  // Get all available projecten/subprojecten/regelkasten
+  const alleProj = projecten;
+  const alleSubprojecten = f.projecten.length
+    ? projecten.filter(p => f.projecten.includes(p.id)).flatMap(p => (p.subprojecten||[]).map((s,i) => ({ pid: p.id, idx: i, naam: s.naam })))
+    : projecten.flatMap(p => (p.subprojecten||[]).map((s,i) => ({ pid: p.id, idx: i, naam: s.naam })));
+  const alleRK = Object.entries(rkMap)
+    .filter(([rk, { proj, sub }]) => {
+      if (f.projecten.length && !f.projecten.includes(proj.id)) return false;
+      if (f.subprojecten.length) {
+        const key = `${proj.id}_${proj.subprojecten?.findIndex(s=>s.naam===sub.naam)}`;
+        // simplified: just name match
+        if (!f.subprojecten.includes(sub.naam)) return false;
       }
-    }
-    setAdding(null); setVal(""); setVal2("");
+      return true;
+    }).map(([rk]) => rk);
+
+  // filter assets
+  let filtered = assets;
+  if (f.regelkasten.length) filtered = filtered.filter(a => f.regelkasten.includes(a.regelkast));
+  else if (f.projecten.length || f.subprojecten.length) {
+    const validRK = new Set(alleRK);
+    filtered = filtered.filter(a => validRK.has(a.regelkast));
+  }
+  if (f.type) filtered = filtered.filter(a => `${a.merk}|||${a.type}` === f.type);
+
+  // group by merk+type
+  const groups = {};
+  filtered.forEach(a => {
+    const key = `${a.merk}|||${a.type}`;
+    if (!groups[key]) groups[key] = { merk: a.merk, type: a.type, items: [] };
+    groups[key].items.push(a);
+  });
+
+  const totaal = filtered.length;
+  const beschikbaar = filtered.filter(a => a.status !== 'uitgegeven').length;
+  const uitgegeven  = filtered.filter(a => a.status === 'uitgegeven').length;
+
+  const alleTypes = Object.keys(groups);
+
+  const hasFilter = f.projecten.length||f.subprojecten.length||f.regelkasten.length||f.type;
+
+  document.getElementById('overzicht-content').innerHTML = `
+    <!-- Filter panel -->
+    <div class="filter-panel">
+      <div class="filter-row">
+        <div class="filter-section">
+          <label>Projecten</label>
+          <div class="filter-btns">
+            ${alleProj.map(p => `<button class="filter-btn ${f.projecten.includes(p.id)?'active':''}" onclick="ovToggleFilter('projecten','${p.id}')">${esc(p.nummer)}</button>`).join('')}
+          </div>
+        </div>
+        <div class="filter-section">
+          <label>Subprojecten</label>
+          <div class="filter-btns">
+            ${alleSubprojecten.map(s => `<button class="filter-btn ${f.subprojecten.includes(s.naam)?'active':''}" onclick="ovToggleFilter('subprojecten','${esc(s.naam)}')">${esc(s.naam)}</button>`).join('')}
+          </div>
+        </div>
+        <div class="filter-section">
+          <label>Regelkasten</label>
+          <div class="filter-btns">
+            ${alleRK.map(rk => `<button class="filter-btn ${f.regelkasten.includes(rk)?'active':''}" onclick="ovToggleFilter('regelkasten','${esc(rk)}')">${esc(rk)}</button>`).join('')}
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:10px">
+        <label style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:8px">Artikeltype</label>
+        <div class="filter-btns">
+          <button class="filter-btn ${!f.type?'active':''}" onclick="ovSetType(null)">Alle types</button>
+          ${alleTypes.map(k => { const g=groups[k]; return `<button class="filter-btn ${f.type===k?'active':''}" onclick="ovSetType('${esc(k)}')">${esc(g.merk)} ${esc(g.type)}</button>`; }).join('')}
+        </div>
+      </div>
+      ${hasFilter ? `<div style="margin-top:10px"><button class="btn btn-secondary btn-sm" onclick="ovClearFilters()">✕ Wis filters</button></div>` : ''}
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-row">
+      <div class="stat-card"><div class="stat-value">${totaal}</div><div class="stat-label">Totaal gecodeerd</div></div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--green)">${beschikbaar}</div><div class="stat-label">Beschikbaar</div></div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--red)">${uitgegeven}</div><div class="stat-label">Uitgegeven</div></div>
+    </div>
+
+    <!-- Table -->
+    ${!f.type ? `<div class="tbl-wrap"><table>
+      <thead><tr><th>Merk</th><th>Type</th><th>Totaal</th><th>Beschikbaar</th><th>Uitgegeven</th><th>Regelkasten</th></tr></thead>
+      <tbody>${Object.entries(groups).map(([k,g]) => {
+        const bes = g.items.filter(a => a.status!=='uitgegeven').length;
+        const uit = g.items.filter(a => a.status==='uitgegeven').length;
+        const rks = [...new Set(g.items.map(a=>a.regelkast))].join(', ');
+        return `<tr style="cursor:pointer" onclick="ovSetType('${esc(k)}')">
+          <td>${esc(g.merk)}</td><td>${esc(g.type)}</td>
+          <td><span class="badge badge-orange">${g.items.length}</span></td>
+          <td><span class="badge badge-green">${bes}</span></td>
+          <td><span class="badge badge-red">${uit}</span></td>
+          <td style="font-size:12px;color:var(--text2)">${esc(rks)}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>` : ''}
+
+    <!-- Drill-down -->
+    ${f.type && groups[f.type] ? `<div class="tbl-wrap"><table>
+      <thead><tr><th>Opnemercode</th><th>Regelkast</th><th>Status</th><th>Uitgiftedatum</th><th>Aan wie</th><th>Firma</th></tr></thead>
+      <tbody>${groups[f.type].items.map(a => `<tr>
+        <td><span style="color:var(--accent);font-family:var(--font-mono)">${esc(a.code)}</span></td>
+        <td><span class="badge badge-blue">${esc(a.regelkast)}</span></td>
+        <td><span class="badge ${a.status==='uitgegeven'?'badge-red':'badge-green'}">${a.status||'beschikbaar'}</span></td>
+        <td>${fmt(a.uitgiftedatum)}</td>
+        <td>${esc(a.aanWie||'')}</td>
+        <td>${esc(a.firma||'')}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>` : ''}
+  `;
+}
+
+function ovToggleFilter(type, val) {
+  const arr = APP.overzichtFilter[type];
+  const idx = arr.indexOf(val);
+  if (idx === -1) arr.push(val); else arr.splice(idx, 1);
+  renderOverzicht();
+}
+function ovSetType(t) { APP.overzichtFilter.type = t; renderOverzicht(); }
+function ovClearFilters() {
+  APP.overzichtFilter = { projecten:[], subprojecten:[], regelkasten:[], type: null };
+  renderOverzicht();
+}
+
+// ════════════════════════════════════════════════════════════
+//  PAGE 6: UITGIFTE
+// ════════════════════════════════════════════════════════════
+
+function renderUitgifte() {
+  const assets  = DB.getAll('assets').filter(a => a.status !== 'uitgegeven');
+  const uitgegeven = DB.getAll('assets').filter(a => a.status === 'uitgegeven');
+  const u = APP.uitgifte;
+
+  const alleRK = [...new Set(assets.map(a => a.regelkast))];
+  const filtered = u.rkFilter ? assets.filter(a => a.regelkast === u.rkFilter) : assets;
+
+  const printBtn = document.getElementById('print-btn');
+  if (printBtn) printBtn.style.display = u.confirmData ? '' : 'none';
+
+  document.getElementById('uitgifte-content').innerHTML = `
+    <!-- Bevestiging -->
+    ${u.confirmData ? `<div class="card" style="border-color:var(--green);background:rgba(34,197,94,0.05);margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-weight:700;color:var(--green);margin-bottom:4px">✅ Uitgifte geregistreerd</div>
+          <div style="font-size:13px;color:var(--text2)">${u.confirmData.count} item(s) uitgegeven aan <strong>${esc(u.confirmData.aanWie)}</strong> (${esc(u.confirmData.firma)}) op ${fmt(u.confirmData.datum)}</div>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="printOntvangst()">🖨 Afdrukken / Ondertekenen</button>
+      </div>
+    </div>` : ''}
+
+    <!-- Formulier -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-header"><div class="card-title">Uitgifte registreren</div></div>
+      <div class="form-grid">
+        <div class="form-group"><label>Aan wie *</label><input id="uit-aanwie" placeholder="Naam"></div>
+        <div class="form-group"><label>Firma *</label><input id="uit-firma" placeholder="Bedrijfsnaam"></div>
+        <div class="form-group"><label>Datum</label><input id="uit-datum" type="date" value="${today()}"></div>
+      </div>
+      <div style="margin-top:12px">
+        <button class="btn btn-primary" id="uit-btn" onclick="doUitgifte()" ${u.selected.length?'':'disabled'}>
+          ✓ Uitgeven${u.selected.length ? ` (${u.selected.length})` : ''}
+        </button>
+      </div>
+    </div>
+
+    <!-- Tabbladen -->
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="btn ${u.tab==='beschikbaar'?'btn-primary':'btn-secondary'} btn-sm" onclick="uitTab('beschikbaar')">Beschikbaar (${assets.length})</button>
+      <button class="btn ${u.tab==='uitgegeven'?'btn-primary':'btn-secondary'} btn-sm" onclick="uitTab('uitgegeven')">Uitgegeven (${uitgegeven.length})</button>
+    </div>
+
+    ${u.tab === 'beschikbaar' ? `
+      <div style="margin-bottom:8px">
+        <select onchange="uitSetRK(this.value)" style="max-width:200px">
+          <option value="">Alle regelkasten</option>
+          ${alleRK.map(rk => `<option value="${esc(rk)}" ${u.rkFilter===rk?'selected':''}>${esc(rk)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="tbl-wrap"><table>
+        <thead><tr>
+          <th><input type="checkbox" onchange="uitSelectAll(this.checked,${JSON.stringify(filtered.map(a=>a.id)).replace(/"/g,'&quot;')})" style="accent-color:var(--accent)"></th>
+          <th>Regelkast</th><th>Opnemercode</th><th>Merk</th><th>Type</th>
+        </tr></thead>
+        <tbody>${filtered.map(a => `<tr onclick="uitToggle('${a.id}')" style="cursor:pointer">
+          <td><input type="checkbox" ${u.selected.includes(a.id)?'checked':''} onchange="uitToggle('${a.id}')" onclick="event.stopPropagation()" style="accent-color:var(--accent)"></td>
+          <td><span class="badge badge-blue">${esc(a.regelkast)}</span></td>
+          <td><span style="color:var(--accent);font-family:var(--font-mono)">${esc(a.code)}</span></td>
+          <td>${esc(a.merk)}</td><td>${esc(a.type)}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>` :
+
+    `<div class="tbl-wrap"><table>
+      <thead><tr><th>Datum</th><th>Regelkast</th><th>Opnemercode</th><th>Merk</th><th>Type</th><th>Aan wie</th><th>Firma</th></tr></thead>
+      <tbody>${uitgegeven.map(a => `<tr>
+        <td>${fmt(a.uitgiftedatum)}</td>
+        <td><span class="badge badge-blue">${esc(a.regelkast)}</span></td>
+        <td><span style="color:var(--accent);font-family:var(--font-mono)">${esc(a.code)}</span></td>
+        <td>${esc(a.merk)}</td><td>${esc(a.type)}</td>
+        <td>${esc(a.aanWie||'')}</td><td>${esc(a.firma||'')}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`}
+  `;
+}
+
+function uitTab(t) { APP.uitgifte.tab = t; renderUitgifte(); }
+function uitSetRK(v) { APP.uitgifte.rkFilter = v; renderUitgifte(); }
+function uitToggle(id) {
+  const s = APP.uitgifte.selected;
+  const i = s.indexOf(id);
+  if (i === -1) s.push(id); else s.splice(i, 1);
+  renderUitgifte();
+}
+function uitSelectAll(checked, ids) {
+  APP.uitgifte.selected = checked ? [...ids] : [];
+  renderUitgifte();
+}
+
+async function doUitgifte() {
+  const aanWie = document.getElementById('uit-aanwie')?.value.trim();
+  const firma  = document.getElementById('uit-firma')?.value.trim();
+  const datum  = document.getElementById('uit-datum')?.value || today();
+  if (!aanWie) { toast('Vul "Aan wie" in','error'); return; }
+  if (!firma)  { toast('Vul firma in','error'); return; }
+  if (!APP.uitgifte.selected.length) { toast('Selecteer items','error'); return; }
+
+  const ids = [...APP.uitgifte.selected];
+  for (const id of ids) {
+    await DB.update('assets', id, { status:'uitgegeven', aanWie, firma, uitgiftedatum: datum });
+  }
+  APP.lastUitgifteIds = ids;
+  APP.uitgifte.confirmData = { aanWie, firma, datum, count: ids.length };
+  APP.uitgifte.selected = [];
+  toast(`${ids.length} item(s) uitgegeven`,'success');
+  renderUitgifte();
+}
+
+function printOntvangst() {
+  const d = APP.uitgifte.confirmData;
+  if (!d) return;
+  const ids = APP.lastUitgifteIds;
+  const items = DB.getAll('assets').filter(a => ids.includes(a.id));
+  const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="UTF-8">
+    <title>Ontvangstbewijs</title>
+    <style>
+      body { font-family: Arial, sans-serif; padding: 40px; color: #111; }
+      h2 { margin-bottom: 4px; }
+      p { margin: 2px 0; font-size: 14px; color: #555; }
+      table { width: 100%; border-collapse: collapse; margin-top: 24px; font-size: 13px; }
+      th { background: #f5f5f5; padding: 8px 12px; text-align: left; border: 1px solid #ddd; }
+      td { padding: 8px 12px; border: 1px solid #ddd; }
+      .sigs { display: flex; gap: 60px; margin-top: 60px; }
+      .sig-box { flex: 1; border-top: 1px solid #999; padding-top: 8px; font-size: 12px; color: #555; }
+      .print-btn { background: #f97316; color: white; border: none; padding: 10px 20px; cursor: pointer; font-size: 14px; border-radius: 6px; margin-bottom: 20px; }
+      @media print { .print-btn { display: none; } }
+    </style></head><body>
+    <button class="print-btn" onclick="window.print()">🖨 Afdrukken</button>
+    <h2>Ontvangstbewijs</h2>
+    <p>Datum: <strong>${fmt(d.datum)}</strong></p>
+    <p>Aan wie: <strong>${esc(d.aanWie)}</strong></p>
+    <p>Firma: <strong>${esc(d.firma)}</strong></p>
+    <table><thead><tr><th>Regelkast</th><th>Opnemercode</th><th>Merk</th><th>Type</th></tr></thead>
+    <tbody>${items.map(a => `<tr><td>${esc(a.regelkast)}</td><td>${esc(a.code)}</td><td>${esc(a.merk)}</td><td>${esc(a.type)}</td></tr>`).join('')}
+    </tbody></table>
+    <div class="sigs">
+      <div class="sig-box">Handtekening afnemer</div>
+      <div class="sig-box">Handtekening uitgever</div>
+    </div>
+    </body></html>`;
+  const w = window.open('', '_blank');
+  w.document.write(html);
+  w.document.close();
+}
+
+// ════════════════════════════════════════════════════════════
+//  PAGE 7: INSTELLINGEN
+// ════════════════════════════════════════════════════════════
+
+function renderInstellingen() {
+  const connected = DB.isConnected();
+  const counts = {
+    leveranciers: DB.getAll('leveranciers').length,
+    projecten: DB.getAll('projecten').length,
+    bestellingen: DB.getAll('bestellingen').length,
+    assets: DB.getAll('assets').length
   };
 
-  const saveEditPrj = async () => {
-    if (!editPrj?.nr) return;
-    const prj = prjs.find(p => p.id===editPrj.id);
-    await upsertPrj({...prj, nr:editPrj.nr, naam:editPrj.naam});
-    setEditPrj(null);
-  };
+  document.getElementById('instellingen-content').innerHTML = `
+    <!-- Firebase status -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-header"><div class="card-title">🔥 Firebase configuratie</div></div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <div style="width:10px;height:10px;border-radius:50%;background:${connected?'var(--green)':'var(--yellow)'}"></div>
+        <span style="font-size:14px;font-weight:600">${connected ? 'Verbonden met Firebase' : 'Lokale modus (geen Firebase)'}</span>
+      </div>
+      ${!connected ? `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:16px;font-size:13px;line-height:1.8">
+        <strong>Instructies om Firebase te koppelen:</strong><br>
+        1. Ga naar <a href="https://console.firebase.google.com" target="_blank" style="color:var(--accent)">console.firebase.google.com</a><br>
+        2. Maak een nieuw project aan<br>
+        3. Activeer <strong>Firestore Database</strong> (test mode)<br>
+        4. Ga naar Projectinstellingen → Web app registreren<br>
+        5. Kopieer de <code>firebaseConfig</code><br>
+        6. Plak deze bovenaan dit HTML-bestand (vervang <code>JOUW_API_KEY</code> etc.)
+      </div>` : ''}
+    </div>
 
-  const saveEditSub = async () => {
-    if (!editSub?.naam) return;
-    const prj = prjs.find(p => p.subs.some(s => s.id===editSub.subId));
-    if (!prj) return;
-    await upsertPrj({...prj, subs:prj.subs.map(s => s.id===editSub.subId ? {...s, naam:editSub.naam} : s)});
-    setEditSub(null);
-  };
+    <!-- Data beheer -->
+    <div class="card">
+      <div class="card-header"><div class="card-title">💾 Data beheer</div></div>
+      ${['leveranciers','projecten','bestellingen','assets'].map(col => `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)">
+          <div>
+            <div style="font-weight:600;text-transform:capitalize">${col}</div>
+            <div style="font-size:12px;color:var(--text2)">${counts[col]} items</div>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-secondary btn-sm" onclick="exportCSV('${col}')">⬇ Export</button>
+            <label class="btn btn-secondary btn-sm" style="cursor:pointer">
+              ⬆ Import
+              <input type="file" accept=".csv" style="display:none" onchange="importCSV('${col}',this)">
+            </label>
+            <button class="btn btn-danger btn-sm" onclick="clearData('${col}')">🗑 Wissen</button>
+          </div>
+        </div>`).join('')}
+    </div>
 
-  const delPrj = async id => {
-    if (!window.confirm('Project verwijderen?')) return;
-    await deletePrj(id);
-  };
+    <!-- Instructies -->
+    <div class="card" style="margin-top:16px">
+      <div class="card-header"><div class="card-title">ℹ️ Instructies</div></div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.8">
+        <strong style="color:var(--text)">Export:</strong> Download de data als CSV-bestand (backup).<br>
+        <strong style="color:var(--text)">Import:</strong> Upload een CSV om data te vervangen. Het formaat moet overeenkomen met de export.<br>
+        <strong style="color:var(--text)">Wissen:</strong> Verwijdert alle data van die sectie. Niet ongedaan te maken.
+      </div>
+    </div>
+  `;
+}
 
-  const delSub = async (prjId, subId) => {
-    if (!window.confirm('Subproject verwijderen?')) return;
-    const prj = prjs.find(p => p.id===prjId);
-    await upsertPrj({...prj, subs:prj.subs.filter(s => s.id!==subId)});
-  };
+async function clearData(col) {
+  confirm(`${col} wissen`, `Weet je zeker dat je <strong>alle ${col}</strong> wilt verwijderen? Dit is niet ongedaan te maken.`, async () => {
+    await DB.bulkReplace(col, []);
+    toast(`${col} gewist`);
+    renderInstellingen();
+    renderPage(APP.page);
+  });
+}
 
-  const delRK = async (subId, rk) => {
-    if (!window.confirm(`Regelkast "${rk}" verwijderen?`)) return;
-    for (const prj of prjs) {
-      const sub = prj.subs.find(s => s.id===subId);
-      if (sub) {
-        await upsertPrj({...prj, subs:prj.subs.map(s => s.id===subId ? {...s, rks:s.rks.filter(r=>r!==rk)} : s)});
-        break;
-      }
-    }
-  };
+// ════════════════════════════════════════════════════════════
+//  CSV EXPORT / IMPORT
+// ════════════════════════════════════════════════════════════
 
-  const csvPrjs = () => {
-    const rows = [];
-    prjs.forEach(p => {
-      p.subs.forEach(s => {
-        if (s.rks.length>0) s.rks.forEach(rk => rows.push([p.nr, p.naam, s.naam, rk]));
-        else rows.push([p.nr, p.naam, s.naam, '']);
+function exportCSV(type) {
+  if (type === 'leveranciers') {
+    const rows = [['Naam','Contactpersoon','Telefoon','E-mail','Opmerkingen']];
+    DB.getAll('leveranciers').forEach(l => rows.push([l.naam,l.contact,l.telefoon,l.email,l.opmerkingen]));
+    csvDownload('leveranciers.csv', rows);
+  }
+  else if (type === 'projecten') {
+    const rows = [['Projectnummer','Projectnaam','Subproject','Regelkast']];
+    DB.getAll('projecten').forEach(p => {
+      (p.subprojecten||[]).forEach(s => {
+        if (s.regelkasten?.length) s.regelkasten.forEach(rk => rows.push([p.nummer,p.naam,s.naam,rk]));
+        else rows.push([p.nummer,p.naam,s.naam,'']);
       });
-      if (p.subs.length===0) rows.push([p.nr, p.naam, '', '']);
+      if (!p.subprojecten?.length) rows.push([p.nummer,p.naam,'','']);
     });
-    downloadCSV('projecten.csv', ['Projectnummer','Projectnaam','Subproject','Regelkast'], rows);
-  };
-
-  return React.createElement("div", { style:{ maxWidth:900 }},
-    React.createElement(PH, { title:`Projecten (${prjs.length})`, action:
-      React.createElement(React.Fragment, null,
-        React.createElement(CsvBtn, { onClick:csvPrjs }),
-        React.createElement("button", { onClick:()=>{ setAdding({type:"prj"}); setVal(""); setVal2(""); }, style:btn() }, "+ Nieuw project")
-      )
-    }),
-    adding?.type==="prj" && React.createElement("div", { style:card({ border:`1px solid ${C.acc}40`, marginBottom:20 })},
-      React.createElement(SH, { t:"Nieuw project" }),
-      React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }},
-        React.createElement(FI, { label:"Projectnummer *", value:val,  onChange:e=>setVal(e.target.value),  placeholder:"PRJ-2024-020" }),
-        React.createElement(FI, { label:"Projectnaam",     value:val2, onChange:e=>setVal2(e.target.value), placeholder:"Naam van project" })
-      ),
-      React.createElement("div", { style:{ display:"flex", gap:8 }},
-        React.createElement("button", { onClick:doAdd, style:btn() }, "+ Toevoegen"),
-        React.createElement("button", { onClick:()=>setAdding(null), style:btn(C.mut,false) }, "Annuleren")
-      )
-    ),
-    prjs.map(prj => React.createElement("div", { key:prj.id, style:card() },
-      editPrj?.id===prj.id
-        ? React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr auto", gap:10, alignItems:"end", marginBottom:14 }},
-            React.createElement(FI, { label:"Projectnummer *", value:editPrj.nr,   onChange:e=>setEditPrj(p=>({...p,nr:e.target.value})) }),
-            React.createElement(FI, { label:"Projectnaam",     value:editPrj.naam, onChange:e=>setEditPrj(p=>({...p,naam:e.target.value})) }),
-            React.createElement("div", { style:{ paddingTop:18, display:"flex", gap:6 }},
-              React.createElement("button", { onClick:saveEditPrj, style:{...btn(), padding:"7px 12px"} }, "✓"),
-              React.createElement("button", { onClick:()=>setEditPrj(null), style:{...btn(C.mut,false), padding:"7px 12px"} }, "✕")
-            )
-          )
-        : React.createElement("div", { style:{ display:"flex", alignItems:"center", gap:12, paddingBottom:exp[prj.id]?14:0, marginBottom:exp[prj.id]?14:0, borderBottom:exp[prj.id]?`1px solid ${C.bdr}`:"none" }},
-            React.createElement("span", { onClick:()=>toggle(prj.id), style:{ color:C.acc, fontFamily:"monospace", fontSize:12, cursor:"pointer", userSelect:"none" }}, exp[prj.id]?"▾":"▸"),
-            React.createElement("div", { onClick:()=>toggle(prj.id), style:{ display:"flex", alignItems:"center", gap:10, flex:1, cursor:"pointer" }},
-              React.createElement("span", { style:{ fontWeight:800, color:C.acc, fontSize:13 }}, prj.nr),
-              React.createElement("span", { style:{ fontWeight:600 }}, prj.naam),
-              React.createElement("span", { style:{ marginLeft:8, background:C.sur2, color:C.mut, border:`1px solid ${C.bdr}`, borderRadius:3, padding:"1px 7px", fontSize:11 }},
-                `${prj.subs.length} subproject${prj.subs.length!==1?"en":""}`)
-            ),
-            React.createElement("div", { style:{ display:"flex", gap:5 }},
-              React.createElement("button", { onClick:()=>setEditPrj({id:prj.id, nr:prj.nr, naam:prj.naam}), style:ibtn(C.blue) }, "✏"),
-              React.createElement("button", { onClick:()=>delPrj(prj.id), style:ibtn(C.red) }, "🗑")
-            )
-          ),
-      exp[prj.id] && React.createElement("div", null,
-        prj.subs.map(sub => React.createElement("div", { key:sub.id, style:{ background:C.bg, border:`1px solid ${C.bdr}`, borderRadius:4, padding:"10px 14px", marginBottom:6 }},
-          editSub?.subId===sub.id
-            ? React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr auto", gap:10, alignItems:"end", marginBottom:8 }},
-                React.createElement(FI, { label:"Subproject naam *", value:editSub.naam, onChange:e=>setEditSub(p=>({...p,naam:e.target.value})) }),
-                React.createElement("div", { style:{ paddingTop:18, display:"flex", gap:6 }},
-                  React.createElement("button", { onClick:saveEditSub, style:{...btn(), padding:"7px 12px"} }, "✓"),
-                  React.createElement("button", { onClick:()=>setEditSub(null), style:{...btn(C.mut,false), padding:"7px 12px"} }, "✕")
-                )
-              )
-            : React.createElement("div", { style:{ display:"flex", alignItems:"center", gap:10 }},
-                React.createElement("span", { onClick:()=>toggle(sub.id), style:{ color:C.blue, fontSize:11, cursor:"pointer", userSelect:"none" }}, exp[sub.id]?"▾":"▸"),
-                React.createElement("span", { onClick:()=>toggle(sub.id), style:{ fontWeight:600, cursor:"pointer", flex:1 }}, sub.naam),
-                React.createElement("span", { style:{ fontSize:11, color:C.mut }}, `${sub.rks.length} regelkast${sub.rks.length!==1?"en":""}`),
-                React.createElement("div", { style:{ display:"flex", gap:5, marginLeft:8 }},
-                  React.createElement("button", { onClick:e=>{ e.stopPropagation(); setAdding({type:"rk",prjId:prj.id,subId:sub.id}); setVal(""); }, style:ibtn(C.blue,{fontSize:10}) }, "+ RK"),
-                  React.createElement("button", { onClick:()=>setEditSub({prjId:prj.id, subId:sub.id, naam:sub.naam}), style:ibtn(C.blue,{fontSize:10}) }, "✏"),
-                  React.createElement("button", { onClick:()=>delSub(prj.id, sub.id), style:ibtn(C.red,{fontSize:10}) }, "🗑")
-                )
-              ),
-          (exp[sub.id] || (adding?.type==="rk" && adding.subId===sub.id)) && React.createElement("div", { style:{ display:"flex", flexWrap:"wrap", gap:6, marginTop:10 }},
-            sub.rks.map(rk => React.createElement("div", { key:rk, style:{ display:"flex", alignItems:"center", gap:4, background:"rgba(59,130,246,.1)", border:"1px solid rgba(59,130,246,.2)", borderRadius:3, padding:"2px 6px 2px 10px" }},
-              React.createElement("span", { style:{ fontSize:12, fontWeight:700, color:C.blue }}, rk),
-              React.createElement("button", { onClick:()=>delRK(sub.id, rk), style:{ background:"none", border:"none", color:"#ef444470", cursor:"pointer", fontSize:12, padding:"0 2px", lineHeight:1, fontWeight:700 }}, "×")
-            )),
-            adding?.type==="rk" && adding.subId===sub.id && React.createElement("div", { style:{ display:"flex", gap:6, alignItems:"center" }},
-              React.createElement("input", { style:inp({width:110}), placeholder:"RK-xxx", value:val, onChange:e=>setVal(e.target.value), onKeyDown:e=>e.key==="Enter"&&doAdd(), autoFocus:true }),
-              React.createElement("button", { onClick:doAdd, style:{...btn(), padding:"4px 10px",fontSize:11} }, "✓"),
-              React.createElement("button", { onClick:()=>setAdding(null), style:{...btn(C.mut,false),padding:"4px 10px",fontSize:11} }, "✕")
-            )
-          )
-        )),
-        adding?.type==="sub" && adding.prjId===prj.id
-          ? React.createElement("div", { style:{ display:"flex", gap:8, alignItems:"center", marginTop:8 }},
-              React.createElement("input", { style:inp({flex:1}), placeholder:"Subproject naam", value:val, onChange:e=>setVal(e.target.value), autoFocus:true }),
-              React.createElement("button", { onClick:doAdd, style:btn() }, "+ Toevoegen"),
-              React.createElement("button", { onClick:()=>setAdding(null), style:btn(C.mut,false) }, "✕")
-            )
-          : React.createElement("button", { onClick:()=>{ setAdding({type:"sub",prjId:prj.id}); setVal(""); }, style:{...btn(C.mut,false), marginTop:8, padding:"4px 12px", fontSize:11} }, "+ Subproject toevoegen")
-      )
-    ))
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   BESTELLINGEN
-═══════════════════════════════════════════════════════════════ */
-const STEPS = ["offerte","bestelling","bevestigd","geleverd"];
-const NEXT_FIELDS = {
-  bestelling: [
-    { k:"ioNr",    label:"IO Nummer *",            ph:"IO-2024-0..." },
-    { k:"bestDat", label:"Besteldatum",             ph:"", type:"date" },
-  ],
-  bevestigd: [
-    { k:"obNr",      label:"Orderbevestigingsnr. *", ph:"OB-..." },
-    { k:"levBestNr", label:"Bestelnr. leverancier",  ph:"BES-..." },
-    { k:"verwLev",   label:"Verwachte leverdatum",    ph:"", type:"date" },
-  ],
-  geleverd: [
-    { k:"pbNr",   label:"Pakbonnummer *",           ph:"PB-..." },
-    { k:"levDat", label:"Leverdatum",                ph:"", type:"date" },
-  ],
-};
-
-function ArtTable({ arts, onDel }) {
-  if (!arts.length) return null;
-  return React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse", marginBottom:14 }},
-    React.createElement("thead", null,
-      React.createElement("tr", { style:{ borderBottom:`1px solid ${C.bdr}` }},
-        ["Merk","Type","Aantal","Opmerking",""].map(h =>
-          React.createElement("th", { key:h, style:{ textAlign:"left", padding:"5px 10px", fontSize:10, color:C.mut, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em" }}, h)
-        )
-      )
-    ),
-    React.createElement("tbody", null,
-      arts.map((a,i) => React.createElement("tr", { key:a.id||i, style:{ borderBottom:`1px solid ${C.sur2}` }},
-        React.createElement("td", { style:{ padding:"7px 10px", fontWeight:700 }}, a.merk),
-        React.createElement("td", { style:{ padding:"7px 10px" }}, a.type),
-        React.createElement("td", { style:{ padding:"7px 10px", textAlign:"center" }}, a.n),
-        React.createElement("td", { style:{ padding:"7px 10px", color:"#94a3b8", fontSize:12 }}, a.opm||"—"),
-        onDel && React.createElement("td", { style:{ padding:"7px 10px", textAlign:"right" }},
-          React.createElement("button", { onClick:()=>onDel(i), style:{...ibtn(C.red), padding:"2px 8px"} }, "✕")
-        )
-      ))
-    )
-  );
-}
-
-function ArtAddRow({ art, setArt, onAdd }) {
-  return React.createElement("div", { style:{ background:C.bg, border:`1px dashed ${C.bdr}`, borderRadius:4, padding:14 }},
-    React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 70px 1fr auto", gap:10, alignItems:"end" }},
-      React.createElement(FI, { label:"Merk *",    value:art.merk, onChange:e=>setArt(p=>({...p,merk:e.target.value})), placeholder:"Belimo" }),
-      React.createElement(FI, { label:"Type *",    value:art.type, onChange:e=>setArt(p=>({...p,type:e.target.value})), placeholder:"EV015" }),
-      React.createElement(FI, { label:"Aantal",    type:"number", min:"1", value:art.n, onChange:e=>setArt(p=>({...p,n:e.target.value})) }),
-      React.createElement(FI, { label:"Opmerking", value:art.opm,  onChange:e=>setArt(p=>({...p,opm:e.target.value})),  placeholder:"Optioneel" }),
-      React.createElement("div", { style:{paddingTop:18} }, React.createElement("button", { onClick:onAdd, style:btn() }, "+ Toevoegen"))
-    )
-  );
-}
-
-function BestPage({ levs, prjs, bests, upsertBest, deleteBest }) {
-  const [exp,       setExp]       = useState("b1");
-  const [wizard,    setWizard]    = useState(null);
-  const [nextForm,  setNextForm]  = useState({});
-  const [newMode,   setNewMode]   = useState(false);
-  const [newBest,   setNewBest]   = useState(null);
-  const [newArt,    setNewArt]    = useState({ merk:"", type:"", n:1, opm:"" });
-  const [tempArts,  setTempArts]  = useState([]);
-  const [editMode,  setEditMode]  = useState(false);
-  const [editBest,  setEditBest]  = useState(null);
-  const [editArts,  setEditArts]  = useState([]);
-  const [editNewArt,setEditNewArt]= useState({ merk:"", type:"", n:1, opm:"" });
-
-  const levOpts = [{ v:"", l:"— Kies leverancier —" }, ...levs.map(l => ({ v:l.id, l:l.naam }))];
-  const prjOpts = [{ v:"", l:"— Kies project —" },     ...prjs.map(p => ({ v:p.id, l:`${p.nr} — ${p.naam}` }))];
-  const subOpts = prjId => {
-    const prj = prjs.find(p => p.id===prjId);
-    return prj ? [{ v:"", l:"— Kies subproject —" }, ...prj.subs.map(s=>({v:s.id,l:s.naam}))]
-               : [{ v:"", l:"— Kies eerst project —" }];
-  };
-
-  const doNext = async bestId => {
-    const b = bests.find(x => x.id===bestId);
-    const ns = STEPS[STEPS.indexOf(b.status)+1];
-    if (!ns) return;
-    await upsertBest({...b,...nextForm,status:ns});
-    setWizard(null); setNextForm({});
-  };
-
-  const startNew = heeftOff => {
-    setNewBest({ levId:"", prjId:"", subId:"", heeftOff, offNr:"", offDat:"", ioNr:"", bestDat:new Date().toISOString().slice(0,10),
-      obNr:"", levBestNr:"", verwLev:"", pbNr:"", levDat:"" });
-    setTempArts([]); setNewMode(true);
-  };
-
-  const saveNew = async () => {
-    if (!newBest?.levId||!newBest?.prjId||tempArts.length===0) return;
-    const b = { id:`b-${Date.now()}`, ...newBest,
-      status:newBest.heeftOff?"offerte":"bestelling", arts:tempArts };
-    await upsertBest(b);
-    setNewMode(false); setNewBest(null); setTempArts([]);
-  };
-
-  const startEdit = b => {
-    setEditBest({...b});
-    setEditArts(b.arts.map(a=>({...a})));
-    setEditNewArt({ merk:"", type:"", n:1, opm:"" });
-    setEditMode(true);
-  };
-
-  const saveEdit = async () => {
-    if (!editBest?.levId||!editBest?.prjId||editArts.length===0) return;
-    await upsertBest({...editBest, arts:editArts});
-    setEditMode(false); setEditBest(null); setEditArts([]);
-  };
-
-  const doDeleteBest = async id => {
-    if (!window.confirm('Bestelling verwijderen?')) return;
-    await deleteBest(id);
-  };
-
-  const csvBests = () => {
-    const rows = [];
-    bests.forEach(b => {
-      const lev = levs.find(l=>l.id===b.levId);
-      const prj = prjs.find(p=>p.id===b.prjId);
-      const sub = prj?.subs.find(s=>s.id===b.subId);
-      (b.arts.length>0?b.arts:[{}]).forEach(a => {
-        rows.push([b.status,lev?.naam||'',prj?.nr||'',sub?.naam||'',b.offNr||'',b.offDat||'',b.ioNr||'',b.bestDat||'',b.obNr||'',b.levBestNr||'',b.verwLev||'',b.pbNr||'',b.levDat||'',a.merk||'',a.type||'',a.n||'',a.opm||'']);
+    csvDownload('projecten.csv', rows);
+  }
+  else if (type === 'bestellingen') {
+    const rows = [['Status','Leverancier','Project','Subproject','Offertenr','Offertedatum','IO Nr','Besteldatum','OB Nr','Lev.bestelnr','Verw.levering','Pakbonnr','Leverdatum','Merk','Type','Aantal','Opmerking']];
+    DB.getAll('bestellingen').forEach(b => {
+      (b.artikelen||[{merk:'',type:'',aantal:'',opmerking:''}]).forEach(a => {
+        rows.push([b.status,b.leverancierNaam,b.projectNummer,b.subprojectNaam,b.offertenr,b.offertedatum,b.io,b.besteldatum,b.ob,b.levbestelnr,b.verwlevering,b.pakbon,b.leverdatum,a.merk,a.type,a.aantal,a.opmerking]);
       });
     });
-    downloadCSV('bestellingen.csv',['Status','Leverancier','Project','Subproject','Offertenr','Offertedatum','IO Nr','Besteldatum','OB Nr','Lev.bestelnr','Verw.levering','Pakbonnr','Leverdatum','Merk','Type','Aantal','Opmerking'],rows);
-  };
-
-  const getLev = id => levs.find(l=>l.id===id);
-  const getPrj = id => prjs.find(p=>p.id===id);
-  const getSub = (pId,sId) => prjs.find(p=>p.id===pId)?.subs.find(s=>s.id===sId);
-
-  const sorted = [...bests].sort((a,b) => {
-    const o={geleverd:0,bevestigd:1,bestelling:2,offerte:3};
-    return (o[a.status]??9)-(o[b.status]??9);
-  });
-
-  // Wizard form component
-  const WizardForm = ({ mode, best, setBest, arts, setArts, newArtS, setNewArtS, onSave, onCancel }) =>
-    React.createElement("div", { style:{ maxWidth:960 }},
-      React.createElement("div", { style:{ display:"flex", alignItems:"center", gap:12, marginBottom:20 }},
-        React.createElement("button", { onClick:onCancel, style:btn(C.mut,false) }, "← Terug"),
-        React.createElement("div", { style:{ fontWeight:800, color:C.acc, fontSize:13 }},
-          mode==="edit" ? "Bestelling bewerken" : best.heeftOff ? "Nieuwe offerte" : "Nieuwe bestelling")
-      ),
-      React.createElement("div", { style:card() },
-        React.createElement(SH, { t:"Gegevens" }),
-        React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:14, marginBottom:14 }},
-          React.createElement(FS, { label:"Leverancier *", opts:levOpts, value:best.levId||'', onChange:e=>setBest(p=>({...p,levId:e.target.value})) }),
-          React.createElement(FS, { label:"Project *",     opts:prjOpts, value:best.prjId||'', onChange:e=>setBest(p=>({...p,prjId:e.target.value,subId:""})) }),
-          React.createElement(FS, { label:"Subproject",    opts:subOpts(best.prjId), value:best.subId||'', onChange:e=>setBest(p=>({...p,subId:e.target.value})) })
-        ),
-        React.createElement("div", { style:{ marginBottom:12 }},
-          React.createElement("label", { style:{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontSize:13 }},
-            React.createElement("input", { type:"checkbox", checked:!!best.heeftOff, onChange:e=>setBest(p=>({...p,heeftOff:e.target.checked})), style:{ accentColor:C.acc, width:14, height:14 }}),
-            React.createElement("span", { style:{ color:C.mut }}, "Heeft offerte")
-          )
-        ),
-        best.heeftOff && React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }},
-          React.createElement(FI, { label:"Offertenummer", value:best.offNr||'',  onChange:e=>setBest(p=>({...p,offNr:e.target.value})),  placeholder:"OFF-2024-..." }),
-          React.createElement(FI, { label:"Offertedatum",  type:"date", value:best.offDat||'', onChange:e=>setBest(p=>({...p,offDat:e.target.value})) })
-        ),
-        React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }},
-          React.createElement(FI, { label:"IO Nummer",  value:best.ioNr||'',   onChange:e=>setBest(p=>({...p,ioNr:e.target.value})),   placeholder:"IO-2024-..." }),
-          React.createElement(FI, { label:"Besteldatum", type:"date", value:best.bestDat||'', onChange:e=>setBest(p=>({...p,bestDat:e.target.value})) })
-        ),
-        React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:14, marginBottom:14 }},
-          React.createElement(FI, { label:"Orderbevestigingsnr.", value:best.obNr||'',      onChange:e=>setBest(p=>({...p,obNr:e.target.value})),      placeholder:"OB-..." }),
-          React.createElement(FI, { label:"Bestelnr. leverancier",value:best.levBestNr||'', onChange:e=>setBest(p=>({...p,levBestNr:e.target.value})), placeholder:"BES-..." }),
-          React.createElement(FI, { label:"Verwachte leverdatum", type:"date", value:best.verwLev||'', onChange:e=>setBest(p=>({...p,verwLev:e.target.value})) })
-        ),
-        React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }},
-          React.createElement(FI, { label:"Pakbonnummer", value:best.pbNr||'',  onChange:e=>setBest(p=>({...p,pbNr:e.target.value})),  placeholder:"PB-..." }),
-          React.createElement(FI, { label:"Leverdatum",   type:"date", value:best.levDat||'', onChange:e=>setBest(p=>({...p,levDat:e.target.value})) })
-        )
-      ),
-      React.createElement("div", { style:card() },
-        React.createElement(SH, { t:"Artikelen" }),
-        React.createElement(ArtTable, { arts, onDel:i=>setArts(p=>p.filter((_,j)=>j!==i)) }),
-        React.createElement(ArtAddRow, { art:newArtS, setArt:setNewArtS, onAdd:()=>{
-          if (!newArtS.merk||!newArtS.type) return;
-          setArts(p=>[...p,{id:`na-${Date.now()}`, ...newArtS, n:Number(newArtS.n)}]);
-          setNewArtS({ merk:"", type:"", n:1, opm:"" });
-        }})
-      ),
-      React.createElement("div", { style:{ display:"flex", gap:8 }},
-        React.createElement("button", { onClick:onSave, disabled:!best.levId||!best.prjId||arts.length===0,
-          style:{...btn(), opacity:(!best.levId||!best.prjId||arts.length===0)?0.4:1} },
-          `✓ Opslaan (${arts.length} artikel${arts.length!==1?"en":""})`),
-        React.createElement("button", { onClick:onCancel, style:btn(C.mut,false) }, "Annuleren")
-      )
-    );
-
-  if (newMode && newBest) return React.createElement(WizardForm, {
-    mode:"new", best:newBest, setBest:setNewBest, arts:tempArts, setArts:setTempArts,
-    newArtS:newArt, setNewArtS:setNewArt, onSave:saveNew,
-    onCancel:()=>{setNewMode(false);setNewBest(null);setTempArts([]);}
-  });
-
-  if (editMode && editBest) return React.createElement(WizardForm, {
-    mode:"edit", best:editBest, setBest:setEditBest, arts:editArts, setArts:setEditArts,
-    newArtS:editNewArt, setNewArtS:setEditNewArt, onSave:saveEdit,
-    onCancel:()=>{setEditMode(false);setEditBest(null);setEditArts([]);}
-  });
-
-  return React.createElement("div", { style:{ maxWidth:1000 }},
-    React.createElement(PH, { title:`Bestellingen (${bests.length})`, action:
-      React.createElement(React.Fragment, null,
-        React.createElement(CsvBtn, { onClick:csvBests }),
-        React.createElement("button", { onClick:()=>startNew(false), style:btn() }, "+ Nieuwe bestelling"),
-        React.createElement("button", { onClick:()=>startNew(true),  style:btn(C.blue,false) }, "+ Vanaf offerte")
-      )
-    }),
-    sorted.map(b => {
-      const lev=getLev(b.levId), prj=getPrj(b.prjId), sub=getSub(b.prjId,b.subId);
-      const isOpen=exp===b.id;
-      const idx=STEPS.indexOf(b.status);
-      const ns=STEPS[idx+1];
-      const isWiz=wizard?.bestId===b.id;
-
-      return React.createElement("div", { key:b.id, style:card() },
-        React.createElement("div", { style:{ display:"flex", alignItems:"center", gap:10, paddingBottom:isOpen?14:0, marginBottom:isOpen?14:0, borderBottom:isOpen?`1px solid ${C.bdr}`:"none" }},
-          React.createElement("span", { onClick:()=>setExp(isOpen?null:b.id), style:{ color:C.acc, fontSize:11, cursor:"pointer", userSelect:"none" }}, isOpen?"▾":"▸"),
-          React.createElement("div", { onClick:()=>setExp(isOpen?null:b.id), style:{ display:"flex", alignItems:"center", gap:10, flex:1, cursor:"pointer", overflow:"hidden" }},
-            React.createElement(Bdg, { v:b.status }),
-            b.ioNr  && React.createElement("span", { style:{ fontWeight:800, color:C.acc, fontSize:13 }}, b.ioNr),
-            !b.ioNr&&b.offNr && React.createElement("span", { style:{ fontWeight:700, color:"#a855f7", fontSize:13 }}, b.offNr),
-            lev&&React.createElement("span", { style:{ fontSize:13 }}, lev.naam),
-            prj&&React.createElement("span", { style:{ background:"rgba(59,130,246,.1)", color:C.blue, border:"1px solid rgba(59,130,246,.2)", borderRadius:3, fontSize:11, fontWeight:700, padding:"2px 8px" }}, prj.nr),
-            sub&&React.createElement("span", { style:{ fontSize:12, color:C.mut }}, sub.naam),
-            React.createElement("span", { style:{ fontSize:11, color:C.mut, marginLeft:"auto" }}, `${b.arts.length} art.`)
-          ),
-          React.createElement("div", { style:{ display:"flex", gap:5, flexShrink:0 }},
-            React.createElement("button", { onClick:()=>startEdit(b), style:ibtn(C.blue) }, "✏"),
-            React.createElement("button", { onClick:()=>doDeleteBest(b.id), style:ibtn(C.red) }, "🗑")
-          )
-        ),
-        isOpen && React.createElement(React.Fragment, null,
-          React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:16 }},
-            [
-              b.heeftOff&&b.offNr    && { l:"Offerte",          v:`${b.offNr}${b.offDat?' ('+b.offDat+')':''}`, c:"#a855f7" },
-              b.ioNr                 && { l:"IO Nummer",         v:b.ioNr,                     c:C.acc },
-              b.bestDat&&b.ioNr      && { l:"Besteldatum",       v:b.bestDat },
-              b.obNr                 && { l:"Orderbevestiging",   v:b.obNr },
-              b.levBestNr            && { l:"Bestelnr. lev.",     v:b.levBestNr },
-              b.verwLev              && { l:"Verwachte levering", v:b.verwLev },
-              b.pbNr                 && { l:"Pakbon",             v:b.pbNr, c:C.grn },
-              b.levDat               && { l:"Geleverd op",        v:b.levDat },
-            ].filter(Boolean).map((x,i) => React.createElement(InfoChip, { key:i, label:x.l, value:x.v, color:x.c }))
-          ),
-          React.createElement(ArtTable, { arts:b.arts }),
-          React.createElement("div", { style:{ display:"flex", gap:8, alignItems:"center", marginBottom:isWiz?16:0 }},
-            STEPS.map((st,i) => {
-              const done=STEPS.indexOf(b.status)>=i;
-              return React.createElement("div", { key:st, style:{ display:"flex", alignItems:"center", gap:6 }},
-                React.createElement("div", { style:{ width:7, height:7, borderRadius:"50%", background:done?ST[st].c:C.bdr, boxShadow:done?`0 0 5px ${ST[st].c}`:"none" }}),
-                React.createElement("span", { style:{ fontSize:11, color:done?ST[st].c:C.mut, fontWeight:done?700:400 }}, ST[st].l),
-                i<STEPS.length-1&&React.createElement("span", { style:{ color:C.bdr, margin:"0 2px" }}, "→")
-              );
-            })
-          ),
-          ns&&!isWiz&&React.createElement("button", { onClick:()=>{setWizard({bestId:b.id});setNextForm({});}, style:{...btn(), marginTop:12} },
-            `→ Zet door naar ${ST[ns]?.l}`),
-          isWiz&&React.createElement("div", { style:{ background:C.bg, border:`1px solid ${C.acc}40`, borderRadius:4, padding:16, marginTop:8 }},
-            React.createElement("div", { style:{ fontSize:11, color:C.acc, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", marginBottom:14 }},
-              `Status wijzigen → ${ST[ns]?.l}`),
-            React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:14 }},
-              (NEXT_FIELDS[ns]||[]).map(f => React.createElement(FI, { key:f.k, label:f.label, type:f.type||"text", value:nextForm[f.k]||"", onChange:e=>setNextForm(p=>({...p,[f.k]:e.target.value})), placeholder:f.ph }))
-            ),
-            React.createElement("div", { style:{ display:"flex", gap:8 }},
-              React.createElement("button", { onClick:()=>doNext(b.id), style:btn() }, "✓ Bevestigen"),
-              React.createElement("button", { onClick:()=>setWizard(null), style:btn(C.mut,false) }, "Annuleren")
-            )
-          )
-        )
-      );
-    })
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   ASSETCODERING — merged stock
-═══════════════════════════════════════════════════════════════ */
-function AssetPage({ assets, upsertAsset, deleteAsset, assetStore, allRK, availArts, lastRK, setLastRK }) {
-  const [addForm,     setAddForm]     = useState({ opcode:"", artKey:"" });
-  const [editAssetId, setEditAssetId] = useState(null);
-  const [editOpc,     setEditOpc]     = useState("");
-
-  const rkOpts  = [{ v:"", l:"— Kies regelkast —" }, ...allRK];
-  // artOpts now uses merged key
-  const artOpts = [
-    { v:"", l:"— Kies artikel —" },
-    ...availArts.map(a => ({ v:a.id, l:`${a.merk} ${a.type}  (${a.remaining}× beschikbaar)` }))
-  ];
-
-  const rkAssets = assets.filter(a => a.rk===lastRK);
-
-  const addAsset = async () => {
-    if (!lastRK||!addForm.opcode||!addForm.artKey) return;
-    const art = availArts.find(a => a.id===addForm.artKey);
-    if (!art) return;
-    const item = {
-      id:`as-${Date.now()}`, rk:lastRK, opcode:addForm.opcode.toUpperCase(),
-      artId:art.artIds[0]||'', merk:art.merk, type:art.type,
-      st:"beschikbaar", uitDat:"", aan:"", firma:""
-    };
-    await upsertAsset(item);
-    setAddForm({ opcode:"", artKey:"" });
-  };
-
-  const saveEditAsset = async () => {
-    if (!editOpc) return;
-    const a = assets.find(x => x.id===editAssetId);
-    await upsertAsset({...a, opcode:editOpc.toUpperCase()});
-    setEditAssetId(null);
-  };
-
-  const delAsset = async id => {
-    if (!window.confirm('Asset verwijderen?')) return;
-    await deleteAsset(id);
-  };
-
-  const csvAssets = () => downloadCSV('assets.csv',
-    ['Regelkast','Opnemercode','Merk','Type','Status','Uitgiftedatum','Aan wie','Firma'],
-    assets.map(a => [a.rk, a.opcode, a.merk, a.type, a.st, a.uitDat||'', a.aan||'', a.firma||''])
-  );
-
-  return React.createElement("div", { style:{ maxWidth:960 }},
-    React.createElement(PH, { title:"Assetcodering", action: React.createElement(CsvBtn, { onClick:csvAssets }) }),
-    React.createElement("div", { style:card({ border:`1px solid ${C.acc}30` }) },
-      React.createElement("div", { style:{ fontSize:10, color:C.acc, fontWeight:700, textTransform:"uppercase", letterSpacing:".08em", marginBottom:14 }}, "Nieuwe codering aanmaken"),
-      React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr auto", gap:12, alignItems:"end" }},
-        React.createElement(FS, { label:"Regelkast (wordt onthouden)", opts:rkOpts, value:lastRK, onChange:e=>setLastRK(e.target.value) }),
-        React.createElement(FI, { label:"Opnemercode *", value:addForm.opcode, onChange:e=>setAddForm(p=>({...p,opcode:e.target.value})), placeholder:"bijv. FT-103" }),
-        React.createElement(FS, { label:"Artikel", opts:artOpts, value:addForm.artKey, onChange:e=>setAddForm(p=>({...p,artKey:e.target.value})) }),
-        React.createElement("div", { style:{paddingTop:18} }, React.createElement("button", { onClick:addAsset, style:btn() }, "+ Toevoegen"))
-      )
-    ),
-    availArts.length>0 && React.createElement("div", { style:card() },
-      React.createElement(SH, { t:"Beschikbare voorraad (samengeteld per type)" }),
-      React.createElement("div", { style:{ display:"flex", flexWrap:"wrap", gap:8 }},
-        availArts.map(a => React.createElement("div", { key:a.id, style:{ background:C.bg, border:`1px solid ${C.bdr}`, borderRadius:4, padding:"10px 14px", minWidth:200 }},
-          React.createElement("div", { style:{ fontWeight:700, fontSize:13, marginBottom:4 }}, `${a.merk} ${a.type}`),
-          React.createElement("div", { style:{ fontSize:11, color:C.mut, marginBottom:6 }},
-            React.createElement("span", { style:{ color:C.grn, fontWeight:700 }}, `${a.remaining}×`),
-            ` beschikbaar · ${a.coded} van ${a.totalN} gecodeerd`
-          ),
-          React.createElement("div", { style:{ height:3, background:C.bdr, borderRadius:2 }},
-            React.createElement("div", { style:{ height:"100%", background:C.grn, borderRadius:2, width:`${Math.min((a.coded/a.totalN)*100,100)}%`, transition:"width .3s" }})
-          )
-        ))
-      )
-    ),
-    availArts.length===0 && React.createElement("div", { style:card({ border:`1px solid ${C.acc}30`, padding:14 }) },
-      React.createElement("span", { style:{ color:C.acc, fontSize:12 }}, "⚠ Geen geleverde bestellingen met beschikbare artikelen.")
-    ),
-    React.createElement("div", { style:card() },
-      React.createElement(SH, { t:`Assets — ${lastRK||"geen regelkast gekozen"} (${rkAssets.length})` }),
-      rkAssets.length===0
-        ? React.createElement("div", { style:{ color:C.mut, fontSize:13, padding:8 }}, "Nog geen assets voor deze regelkast.")
-        : React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse" }},
-            React.createElement("thead", null,
-              React.createElement("tr", { style:{ borderBottom:`1px solid ${C.bdr}` }},
-                ["Opnemercode","Merk","Type","Status",""].map(h =>
-                  React.createElement("th", { key:h, style:{ textAlign:"left", padding:"6px 10px", fontSize:10, color:C.mut, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em" }}, h)
-                )
-              )
-            ),
-            React.createElement("tbody", null,
-              rkAssets.map((a,i) => editAssetId===a.id
-                ? React.createElement("tr", { key:a.id, style:{ borderBottom:`1px solid ${C.sur2}`, background:"rgba(245,158,11,.04)" }},
-                    React.createElement("td", { style:{ padding:"6px 10px" }},
-                      React.createElement("div", { style:{ display:"flex", gap:6, alignItems:"center" }},
-                        React.createElement("input", { style:inp({width:100, padding:"4px 8px"}), value:editOpc, onChange:e=>setEditOpc(e.target.value.toUpperCase()), autoFocus:true, onKeyDown:e=>e.key==="Enter"&&saveEditAsset() }),
-                        React.createElement("button", { onClick:saveEditAsset, style:{...btn(), padding:"4px 10px", fontSize:11} }, "✓"),
-                        React.createElement("button", { onClick:()=>setEditAssetId(null), style:{...btn(C.mut,false), padding:"4px 10px", fontSize:11} }, "✕")
-                      )
-                    ),
-                    React.createElement("td", { style:{ padding:"6px 10px", fontWeight:700 }}, a.merk),
-                    React.createElement("td", { style:{ padding:"6px 10px" }}, a.type),
-                    React.createElement("td", { style:{ padding:"6px 10px" }}, React.createElement(Bdg, { v:a.st, sm:true })),
-                    React.createElement("td", null)
-                  )
-                : React.createElement("tr", { key:a.id, style:{ borderBottom:`1px solid ${C.sur2}`, background:i%2?"rgba(255,255,255,.01)":"transparent" }},
-                    React.createElement("td", { style:{ padding:"8px 10px", fontWeight:700, color:C.acc }}, a.opcode),
-                    React.createElement("td", { style:{ padding:"8px 10px", fontWeight:700 }}, a.merk),
-                    React.createElement("td", { style:{ padding:"8px 10px" }}, a.type),
-                    React.createElement("td", { style:{ padding:"8px 10px" }}, React.createElement(Bdg, { v:a.st, sm:true })),
-                    React.createElement("td", { style:{ padding:"8px 10px", textAlign:"right", whiteSpace:"nowrap" }},
-                      React.createElement("button", { onClick:()=>{setEditAssetId(a.id);setEditOpc(a.opcode);}, style:{...ibtn(C.blue), marginRight:4} }, "✏"),
-                      React.createElement("button", { onClick:()=>delAsset(a.id), style:ibtn(C.red) }, "🗑")
-                    )
-                  )
-              )
-            )
-          )
-    )
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   OVERZICHT — multi-select filter + artikel drill-down
-═══════════════════════════════════════════════════════════════ */
-function OvzPage({ assets, prjs, bests }) {
-  const [selPrjs, setSelPrjs] = useState(new Set());
-  const [selSubs, setSelSubs] = useState(new Set());
-  const [selRKs,  setSelRKs]  = useState(new Set());
-  const [selArt,  setSelArt]  = useState("");
-  const [tab,     setTab]     = useState("types");
-
-  // All available RKs given prj/sub selection
-  const scopeRKs = useMemo(() => {
-    const ps = selPrjs.size > 0 ? prjs.filter(p => selPrjs.has(p.id)) : prjs;
-    return ps.flatMap(p => (selSubs.size > 0 ? p.subs.filter(s => selSubs.has(s.id)) : p.subs).flatMap(s => s.rks));
-  }, [prjs, selPrjs, selSubs]);
-
-  const allSubsForSel = useMemo(() => {
-    const ps = selPrjs.size > 0 ? prjs.filter(p => selPrjs.has(p.id)) : prjs;
-    return ps.flatMap(p => p.subs.map(s => ({...s, prjNr: p.nr})));
-  }, [prjs, selPrjs]);
-
-  const filtered = useMemo(() => {
-    return assets.filter(a => {
-      const rkOk = selRKs.size > 0 ? selRKs.has(a.rk) : scopeRKs.includes(a.rk) || selPrjs.size===0;
-      const artOk = selArt ? `${a.merk}||${a.type}` === selArt : true;
-      return rkOk && artOk;
-    });
-  }, [assets, selRKs, scopeRKs, selPrjs, selArt]);
-
-  // All unique article types in system
-  const allArtTypes = useMemo(() => {
-    const m = {};
-    assets.forEach(a => { const k=`${a.merk}||${a.type}`; m[k]={merk:a.merk,type:a.type,k}; });
-    return Object.values(m).sort((a,b) => a.merk.localeCompare(b.merk));
-  }, [assets]);
-
-  const grouped = useMemo(() => {
-    const g = {};
+    csvDownload('bestellingen.csv', rows);
+  }
+  else if (type === 'assets' || type === 'uitgifte') {
+    const rows = [['Regelkast','Opnemercode','Merk','Type','Status','Uitgiftedatum','Aan wie','Firma']];
+    const filter = type === 'uitgifte' ? a => a.status === 'uitgegeven' : () => true;
+    DB.getAll('assets').filter(filter).forEach(a => rows.push([a.regelkast,a.code,a.merk,a.type,a.status,a.uitgiftedatum,a.aanWie,a.firma]));
+    csvDownload(type+'.csv', rows);
+  }
+  else if (type === 'overzicht') {
+    const assets = DB.getAll('assets');
+    const f = APP.overzichtFilter;
+    let filtered = assets;
+    if (f.regelkasten.length) filtered = filtered.filter(a => f.regelkasten.includes(a.regelkast));
+    if (f.type) filtered = filtered.filter(a => `${a.merk}|||${a.type}` === f.type);
+    const groups = {};
     filtered.forEach(a => {
-      const k=`${a.merk}||${a.type}`;
-      if (!g[k]) g[k]={ merk:a.merk, type:a.type, total:0, beschikbaar:0, uitgegeven:0, rks:new Set(), items:[] };
-      g[k].total++; g[k][a.st]++; g[k].rks.add(a.rk); g[k].items.push(a);
+      const k = `${a.merk}|||${a.type}`;
+      if (!groups[k]) groups[k] = { merk:a.merk, type:a.type, items:[] };
+      groups[k].items.push(a);
     });
-    return Object.values(g).map(x=>({...x, rks:[...x.rks]}));
-  }, [filtered]);
-
-  // Drill-down: items for selected art
-  const drillItems = useMemo(() => {
-    if (!selArt) return [];
-    return filtered;
-  }, [filtered, selArt]);
-
-  const toggle = (set, setter, val) => {
-    setter(p => { const n = new Set(p); n.has(val) ? n.delete(val) : n.add(val); return n; });
-  };
-
-  const csvOvz = () => downloadCSV('overzicht.csv',
-    ['Merk','Type','Totaal','Beschikbaar','Uitgegeven','Regelkasten'],
-    grouped.map(g => [g.merk, g.type, g.total, g.beschikbaar, g.uitgegeven, g.rks.join('; ')])
-  );
-
-  const chipStyle = (active) => ({
-    background: active ? "rgba(245,158,11,.15)" : C.bg,
-    border: `1px solid ${active ? C.acc : C.bdr}`,
-    color: active ? C.acc : C.mut,
-    borderRadius:3, padding:"3px 10px", fontSize:11, cursor:"pointer", fontWeight:active?700:400,
-    fontFamily:"'Courier New',monospace"
-  });
-
-  return React.createElement("div", null,
-    React.createElement(PH, { title:"Overzicht componenten", action: React.createElement(CsvBtn, { onClick:csvOvz }) }),
-
-    // Filter panel
-    React.createElement("div", { style:card() },
-      React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:16 }},
-        // Projects multi-select
-        React.createElement("div", null,
-          React.createElement("label", { style:lbl }, "Projecten"),
-          React.createElement("div", { style:{ display:"flex", flexWrap:"wrap", gap:5, marginTop:4 }},
-            prjs.map(p => React.createElement("button", { key:p.id, onClick:()=>toggle(selPrjs,setSelPrjs,p.id), style:chipStyle(selPrjs.has(p.id)) },
-              p.nr
-            ))
-          )
-        ),
-        // Subprojects multi-select
-        React.createElement("div", null,
-          React.createElement("label", { style:lbl }, "Subprojecten"),
-          React.createElement("div", { style:{ display:"flex", flexWrap:"wrap", gap:5, marginTop:4 }},
-            allSubsForSel.map(s => React.createElement("button", { key:s.id, onClick:()=>toggle(selSubs,setSelSubs,s.id), style:chipStyle(selSubs.has(s.id)) },
-              s.naam
-            ))
-          )
-        ),
-        // RKs multi-select
-        React.createElement("div", null,
-          React.createElement("label", { style:lbl }, "Regelkasten"),
-          React.createElement("div", { style:{ display:"flex", flexWrap:"wrap", gap:5, marginTop:4 }},
-            scopeRKs.map(rk => React.createElement("button", { key:rk, onClick:()=>toggle(selRKs,setSelRKs,rk), style:chipStyle(selRKs.has(rk)) },
-              rk
-            ))
-          )
-        )
-      ),
-      // Artikel filter
-      React.createElement("div", { style:{ marginTop:14, paddingTop:14, borderTop:`1px solid ${C.bdr}` }},
-        React.createElement("label", { style:lbl }, "Filter op artikel type"),
-        React.createElement("div", { style:{ display:"flex", flexWrap:"wrap", gap:5, marginTop:4 }},
-          React.createElement("button", { onClick:()=>setSelArt(""), style:chipStyle(!selArt) }, "Alle types"),
-          allArtTypes.map(a => React.createElement("button", { key:a.k, onClick:()=>setSelArt(a.k), style:chipStyle(selArt===a.k) },
-            `${a.merk} ${a.type}`
-          ))
-        )
-      ),
-      (selPrjs.size>0||selSubs.size>0||selRKs.size>0||selArt) && React.createElement("div", { style:{ marginTop:10 }},
-        React.createElement("button", { onClick:()=>{setSelPrjs(new Set());setSelSubs(new Set());setSelRKs(new Set());setSelArt("");}, style:ibtn(C.red) }, "✕ Wis filters")
-      )
-    ),
-
-    // Stats row
-    React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:16 }},
-      [
-        { l:"Totaal gecodeerd", v:filtered.length,                                c:C.txt },
-        { l:"Beschikbaar",     v:filtered.filter(a=>a.st==="beschikbaar").length,  c:C.grn },
-        { l:"Uitgegeven",      v:filtered.filter(a=>a.st==="uitgegeven").length,   c:C.mut },
-      ].map(x => React.createElement("div", { key:x.l, style:card({ textAlign:"center", padding:"12px 10px", marginBottom:0 }) },
-        React.createElement("div", { style:{ fontSize:28, fontWeight:800, color:x.c }}, x.v),
-        React.createElement("div", { style:{ fontSize:10, color:C.mut, fontWeight:700, marginTop:3, textTransform:"uppercase", letterSpacing:".07em" }}, x.l)
-      ))
-    ),
-
-    // Tab: types or drill-down
-    selArt && React.createElement("div", null,
-      // Drill-down for selected art type
-      React.createElement("div", { style:{ marginBottom:14, display:"flex", alignItems:"center", gap:10 }},
-        React.createElement("div", { style:{ fontSize:11, color:C.acc, fontWeight:700 }},
-          `▣ ${selArt.replace('||',' ')} — ${drillItems.length} stuks`
-        )
-      ),
-      React.createElement("div", { style:{ background:C.sur, border:`1px solid ${C.bdr}`, borderRadius:6, overflow:"hidden" }},
-        React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse" }},
-          React.createElement("thead", null,
-            React.createElement("tr", { style:{ background:C.sur2, borderBottom:`1px solid ${C.bdr}` }},
-              ["Opnemercode","Regelkast","Status","Uitgiftedatum","Aan wie","Firma"].map(h =>
-                React.createElement("th", { key:h, style:{ textAlign:"left", padding:"8px 12px", fontSize:10, color:C.mut, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em" }}, h)
-              )
-            )
-          ),
-          React.createElement("tbody", null,
-            drillItems.map((a,i) => React.createElement("tr", { key:a.id, style:{ borderBottom:`1px solid ${C.sur2}`, background:i%2?"rgba(255,255,255,.01)":"transparent" }},
-              React.createElement("td", { style:{ padding:"8px 12px", fontWeight:700, color:C.acc }}, a.opcode),
-              React.createElement("td", { style:{ padding:"8px 12px", color:C.blue }}, a.rk),
-              React.createElement("td", { style:{ padding:"8px 12px" }}, React.createElement(Bdg, { v:a.st, sm:true })),
-              React.createElement("td", { style:{ padding:"8px 12px", color:C.mut, fontSize:12 }}, a.uitDat||"—"),
-              React.createElement("td", { style:{ padding:"8px 12px", fontSize:12 }}, a.aan||"—"),
-              React.createElement("td", { style:{ padding:"8px 12px", color:"#94a3b8", fontSize:12 }}, a.firma||"—")
-            ))
-          )
-        )
-      )
-    ),
-
-    !selArt && (grouped.length===0
-      ? React.createElement("div", { style:card({ textAlign:"center", color:C.mut, padding:28 }) }, "Geen assets voor deze selectie")
-      : React.createElement("div", { style:{ background:C.sur, border:`1px solid ${C.bdr}`, borderRadius:6, overflow:"hidden" }},
-          React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse" }},
-            React.createElement("thead", null,
-              React.createElement("tr", { style:{ background:C.sur2, borderBottom:`1px solid ${C.bdr}` }},
-                ["Merk","Type","Totaal","Beschikbaar","Uitgegeven","Regelkasten"].map(h =>
-                  React.createElement("th", { key:h, style:{ textAlign:"left", padding:"9px 12px", fontSize:10, color:C.mut, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em" }}, h)
-                )
-              )
-            ),
-            React.createElement("tbody", null,
-              grouped.map((g,i) => React.createElement("tr", { key:i,
-                onClick:()=>setSelArt(g.merk+'||'+g.type),
-                style:{ borderBottom:`1px solid ${C.sur2}`, background:i%2?"rgba(255,255,255,.01)":"transparent", cursor:"pointer" }},
-                React.createElement("td", { style:{ padding:"8px 12px", fontWeight:700 }}, g.merk),
-                React.createElement("td", { style:{ padding:"8px 12px" }}, g.type),
-                React.createElement("td", { style:{ padding:"8px 12px", textAlign:"center", fontWeight:700 }}, g.total),
-                React.createElement("td", { style:{ padding:"8px 12px", textAlign:"center" }}, React.createElement("span", { style:{ color:C.grn, fontWeight:700 }}, g.beschikbaar)),
-                React.createElement("td", { style:{ padding:"8px 12px", textAlign:"center" }}, React.createElement("span", { style:{ color:C.mut }}, g.uitgegeven)),
-                React.createElement("td", { style:{ padding:"8px 12px" }},
-                  g.rks.map(rk => React.createElement("span", { key:rk, style:{ background:"rgba(59,130,246,.1)", color:C.blue, border:"1px solid rgba(59,130,246,.2)", borderRadius:3, padding:"1px 6px", fontSize:10, marginRight:4 }}, rk))
-                )
-              ))
-            )
-          )
-        )
-    )
-  );
+    const rows = [['Merk','Type','Totaal','Beschikbaar','Uitgegeven','Regelkasten']];
+    Object.values(groups).forEach(g => {
+      const bes = g.items.filter(a=>a.status!=='uitgegeven').length;
+      const uit = g.items.filter(a=>a.status==='uitgegeven').length;
+      const rks = [...new Set(g.items.map(a=>a.regelkast))].join('; ');
+      rows.push([g.merk,g.type,g.items.length,bes,uit,rks]);
+    });
+    csvDownload('overzicht.csv', rows);
+  }
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   UITGIFTE — select coded assets + print receipt
-═══════════════════════════════════════════════════════════════ */
-function UitPage({ assets, upsertAsset, setAssets, assetStore }) {
-  const [sel,  setSel]  = useState(new Set());
-  const [form, setForm] = useState({ aan:"", firma:"", datum:new Date().toISOString().slice(0,10) });
-  const [fRK,  setFRK]  = useState("");
-  const [tab,  setTab]  = useState("beschikbaar");
-  const [printData, setPrintData] = useState(null);
-
-  const beschikbaar = assets.filter(a=>a.st==="beschikbaar");
-  const uitgegeven  = assets.filter(a=>a.st==="uitgegeven");
-  const allRK       = [...new Set(beschikbaar.map(a=>a.rk))].sort();
-  const rkOpts      = [{ v:"", l:"Alle regelkasten" }, ...allRK.map(r=>({v:r,l:r}))];
-  const filtered    = fRK ? beschikbaar.filter(a=>a.rk===fRK) : beschikbaar;
-
-  const toggleSel = id => setSel(p=>{ const n=new Set(p); n.has(id)?n.delete(id):n.add(id); return n; });
-  const toggleAll = () => setSel(sel.size===filtered.length?new Set():new Set(filtered.map(a=>a.id)));
-
-  const doUitgifte = async () => {
-    if (sel.size===0||!form.aan||!form.firma) return;
-    const updatedItems = [];
-    for (const a of assets) {
-      if (sel.has(a.id)) {
-        const updated = {...a, st:"uitgegeven", uitDat:form.datum, aan:form.aan, firma:form.firma};
-        await upsertAsset(updated);
-        updatedItems.push(updated);
-      }
+async function importCSV(col, input) {
+  const file = input.files[0];
+  if (!file) return;
+  const text = await file.text();
+  const lines = text.replace(/^\uFEFF/,'').split('\n').filter(l=>l.trim());
+  const parse = line => {
+    const cols = []; let cur = ''; let inQ = false;
+    for (const c of line) {
+      if (c === '"') inQ = !inQ;
+      else if (c === ',' && !inQ) { cols.push(cur); cur=''; }
+      else cur += c;
     }
-    // Prepare print data
-    setPrintData({ items:updatedItems, ...form });
-    setSel(new Set());
+    cols.push(cur);
+    return cols.map(c => c.replace(/^"|"$/g,'').replace(/""/g,'"'));
   };
 
-  const doPrint = () => {
-    if (!printData) return;
-    const w = window.open('', '_blank');
-    const rows = printData.items.map(a => `
-      <tr>
-        <td>${a.rk}</td>
-        <td><strong>${a.opcode}</strong></td>
-        <td>${a.merk}</td>
-        <td>${a.type}</td>
-      </tr>`).join('');
-    w.document.write(`
-      <!DOCTYPE html><html><head>
-      <meta charset="UTF-8">
-      <title>Uitgifte bonbon — ${printData.datum}</title>
-      <style>
-        body { font-family: Arial, sans-serif; font-size: 13px; color: #111; padding: 32px; max-width: 700px; margin: 0 auto; }
-        h1 { font-size: 18px; margin-bottom: 4px; }
-        .meta { color: #555; font-size: 12px; margin-bottom: 24px; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 32px; }
-        th { background: #f0f0f0; text-align: left; padding: 7px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
-        td { padding: 7px 10px; border-bottom: 1px solid #e0e0e0; }
-        tr:last-child td { border-bottom: none; }
-        .sig { margin-top: 48px; display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
-        .sig-box { border-top: 1px solid #aaa; padding-top: 8px; font-size: 12px; color: #555; }
-        .sig-line { height: 48px; }
-        @media print { button { display: none; } }
-      </style>
-      </head><body>
-      <h1>▣ Uitgifte Ontvangstbewijs</h1>
-      <div class="meta">
-        Datum: <strong>${printData.datum}</strong> &nbsp;|&nbsp;
-        Uitgegeven aan: <strong>${printData.aan}</strong> &nbsp;|&nbsp;
-        Firma: <strong>${printData.firma}</strong>
-      </div>
-      <table>
-        <thead><tr><th>Regelkast</th><th>Opnemercode</th><th>Merk</th><th>Type</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-      <div class="sig">
-        <div class="sig-box"><div class="sig-line"></div>Handtekening afnemer: ${printData.aan}</div>
-        <div class="sig-box"><div class="sig-line"></div>Handtekening uitgever</div>
-      </div>
-      <button onclick="window.print()" style="margin-top:24px;padding:8px 20px;background:#f59e0b;border:none;border-radius:4px;font-size:13px;font-weight:bold;cursor:pointer;">🖨 Afdrukken</button>
-      </body></html>`);
-    w.document.close();
-  };
-
-  const csvUit = () => downloadCSV('uitgifte.csv',
-    ['Datum','Regelkast','Opnemercode','Merk','Type','Aan wie','Firma'],
-    uitgegeven.map(a => [a.uitDat||'', a.rk, a.opcode, a.merk, a.type, a.aan||'', a.firma||''])
-  );
-
-  return React.createElement("div", null,
-    React.createElement(PH, { title:"Uitgifte componenten", action:
-      React.createElement(React.Fragment, null,
-        React.createElement(CsvBtn, { onClick:csvUit }),
-        printData && React.createElement("button", { onClick:doPrint, style:btn(C.purple, false) }, "🖨 Print ontvangstbewijs")
-      )
-    }),
-
-    // Print ready notification
-    printData && React.createElement("div", { style:card({ border:`1px solid ${C.grn}40`, background:"rgba(34,197,94,.06)", marginBottom:16, padding:14 })},
-      React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center" }},
-        React.createElement("div", null,
-          React.createElement("div", { style:{ color:C.grn, fontWeight:700, fontSize:12, marginBottom:4 }}, `✓ ${printData.items.length} opnemer${printData.items.length!==1?"s":"" } uitgegeven aan ${printData.aan} (${printData.firma})`),
-          React.createElement("div", { style:{ color:C.mut, fontSize:11 }}, `Datum: ${printData.datum}`)
-        ),
-        React.createElement("div", { style:{ display:"flex", gap:8 }},
-          React.createElement("button", { onClick:doPrint, style:btn(C.grn) }, "🖨 Afdrukken / Ondertekenen"),
-          React.createElement("button", { onClick:()=>setPrintData(null), style:ibtn(C.mut) }, "✕ Sluiten")
-        )
-      )
-    ),
-
-    React.createElement("div", { style:card({ border:`1px solid ${C.acc}30` }) },
-      React.createElement("div", { style:{ fontSize:10, color:C.acc, fontWeight:700, textTransform:"uppercase", letterSpacing:".08em", marginBottom:14 }},
-        `Uitgifte registreren — ${sel.size} geselecteerd`),
-      React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 160px auto", gap:12, alignItems:"end" }},
-        React.createElement(FI, { label:"Aan wie *", value:form.aan,  onChange:e=>setForm(p=>({...p,aan:e.target.value})),  placeholder:"Naam persoon" }),
-        React.createElement(FI, { label:"Firma *",   value:form.firma, onChange:e=>setForm(p=>({...p,firma:e.target.value})),placeholder:"Bedrijfsnaam" }),
-        React.createElement(FI, { label:"Datum",     type:"date", value:form.datum, onChange:e=>setForm(p=>({...p,datum:e.target.value})) }),
-        React.createElement("div", { style:{paddingTop:18} },
-          React.createElement("button", { onClick:doUitgifte, disabled:sel.size===0||!form.aan||!form.firma, style:{...btn(), opacity:(sel.size===0||!form.aan||!form.firma)?0.4:1} },
-            `✓ Uitgeven (${sel.size})`)
-        )
-      )
-    ),
-
-    React.createElement("div", { style:{ display:"flex", gap:0, marginBottom:16, borderBottom:`1px solid ${C.bdr}` }},
-      [
-        { id:"beschikbaar", l:`Beschikbaar (${beschikbaar.length})` },
-        { id:"uitgegeven",  l:`Uitgegeven (${uitgegeven.length})` },
-      ].map(t => React.createElement("button", { key:t.id, onClick:()=>setTab(t.id),
-        style:{ background:"none", border:"none", borderBottom:tab===t.id?`2px solid ${C.acc}`:"2px solid transparent",
-          color:tab===t.id?C.acc:C.mut, padding:"7px 18px", cursor:"pointer", fontSize:12, fontWeight:tab===t.id?700:400 }}, t.l))
-    ),
-
-    tab==="beschikbaar" && React.createElement(React.Fragment, null,
-      React.createElement("div", { style:{ marginBottom:12 }},
-        React.createElement(FS, { opts:rkOpts, value:fRK, onChange:e=>setFRK(e.target.value) })
-      ),
-      filtered.length===0
-        ? React.createElement("div", { style:card({ textAlign:"center", color:C.mut, padding:28 }) }, "Geen beschikbare componenten")
-        : React.createElement("div", { style:{ background:C.sur, border:`1px solid ${C.bdr}`, borderRadius:6, overflow:"hidden" }},
-            React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse" }},
-              React.createElement("thead", null,
-                React.createElement("tr", { style:{ background:C.sur2, borderBottom:`1px solid ${C.bdr}` }},
-                  React.createElement("th", { style:{ padding:"8px 12px", width:36 }},
-                    React.createElement("input", { type:"checkbox", style:{ accentColor:C.acc }, checked:sel.size===filtered.length&&filtered.length>0, onChange:toggleAll })
-                  ),
-                  ["Regelkast","Opnemercode","Merk","Type"].map(h =>
-                    React.createElement("th", { key:h, style:{ textAlign:"left", padding:"8px 12px", fontSize:10, color:C.mut, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em" }}, h)
-                  )
-                )
-              ),
-              React.createElement("tbody", null,
-                filtered.map((a,i) => React.createElement("tr", { key:a.id, onClick:()=>toggleSel(a.id),
-                  style:{ borderBottom:`1px solid ${C.sur2}`, cursor:"pointer", background:sel.has(a.id)?"rgba(245,158,11,.06)":i%2?"rgba(255,255,255,.01)":"transparent" }},
-                  React.createElement("td", { style:{ padding:"8px 12px" }},
-                    React.createElement("input", { type:"checkbox", style:{ accentColor:C.acc }, checked:sel.has(a.id), onChange:()=>toggleSel(a.id), onClick:e=>e.stopPropagation() })
-                  ),
-                  React.createElement("td", { style:{ padding:"8px 12px", color:C.blue }}, a.rk),
-                  React.createElement("td", { style:{ padding:"8px 12px", fontWeight:700, color:C.acc }}, a.opcode),
-                  React.createElement("td", { style:{ padding:"8px 12px", fontWeight:700 }}, a.merk),
-                  React.createElement("td", { style:{ padding:"8px 12px" }}, a.type)
-                ))
-              )
-            )
-          )
-    ),
-
-    tab==="uitgegeven" && (
-      uitgegeven.length===0
-        ? React.createElement("div", { style:card({ textAlign:"center", color:C.mut, padding:28 }) }, "Nog niets uitgegeven")
-        : React.createElement("div", { style:{ background:C.sur, border:`1px solid ${C.bdr}`, borderRadius:6, overflow:"auto" }},
-            React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse", minWidth:700 }},
-              React.createElement("thead", null,
-                React.createElement("tr", { style:{ background:C.sur2, borderBottom:`1px solid ${C.bdr}` }},
-                  ["Datum","Regelkast","Opnemercode","Merk","Type","Aan wie","Firma"].map(h =>
-                    React.createElement("th", { key:h, style:{ textAlign:"left", padding:"8px 12px", fontSize:10, color:C.mut, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", whiteSpace:"nowrap" }}, h)
-                  )
-                )
-              ),
-              React.createElement("tbody", null,
-                uitgegeven.map((a,i) => React.createElement("tr", { key:a.id, style:{ borderBottom:`1px solid ${C.sur2}`, background:i%2?"rgba(255,255,255,.01)":"transparent" }},
-                  React.createElement("td", { style:{ padding:"7px 12px", fontSize:12 }}, a.uitDat||"—"),
-                  React.createElement("td", { style:{ padding:"7px 12px", color:C.blue }}, a.rk),
-                  React.createElement("td", { style:{ padding:"7px 12px", fontWeight:700, color:C.acc }}, a.opcode),
-                  React.createElement("td", { style:{ padding:"7px 12px", fontWeight:700 }}, a.merk),
-                  React.createElement("td", { style:{ padding:"7px 12px" }}, a.type),
-                  React.createElement("td", { style:{ padding:"7px 12px" }}, a.aan||"—"),
-                  React.createElement("td", { style:{ padding:"7px 12px", color:"#94a3b8" }}, a.firma||"—")
-                ))
-              )
-            )
-          )
-    )
-  );
+  try {
+    let items = [];
+    if (col === 'leveranciers') {
+      items = lines.slice(1).map(l => { const c=parse(l); return { id:String(Date.now()+Math.random()), naam:c[0],contact:c[1],telefoon:c[2],email:c[3],opmerkingen:c[4] }; });
+    } else if (col === 'assets') {
+      items = lines.slice(1).map(l => { const c=parse(l); return { id:String(Date.now()+Math.random()), regelkast:c[0],code:c[1],merk:c[2],type:c[3],status:c[4],uitgiftedatum:c[5],aanWie:c[6],firma:c[7] }; });
+    } else {
+      toast(`Import voor ${col} wordt niet ondersteund via CSV`, 'error'); return;
+    }
+    await DB.bulkReplace(col, items);
+    toast(`${items.length} ${col} geïmporteerd`, 'success');
+    renderInstellingen();
+  } catch(e) {
+    toast('Import mislukt: controleer het CSV-formaat', 'error');
+  }
+  input.value = '';
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   INSTELLINGEN
-═══════════════════════════════════════════════════════════════ */
-function InstPage({ fb, levs, setLevs, prjs, setPrjs, bests, setBests, assets, setAssets, levStore, prjStore, bestStore, assetStore }) {
-  const fileInputLev   = useRef(null);
-  const fileInputPrj   = useRef(null);
-  const fileInputBest  = useRef(null);
-  const fileInputAsset = useRef(null);
-
-  const exportLev = () => downloadCSV('leveranciers.csv',['Naam','Contactpersoon','Telefoon','E-mail','Opmerkingen'],levs.map(l=>[l.naam,l.contact,l.tel,l.email,l.opmerking]));
-  const importLev = e => {
-    const file=e.target.files?.[0]; if(!file) return;
-    const reader=new FileReader();
-    reader.onload=ev=>{
-      const {rows}=parseCSV(ev.target.result);
-      const imported=rows.map(r=>({id:`l-${Date.now()}-${Math.random()}`,naam:r[0]||'',contact:r[1]||'',tel:r[2]||'',email:r[3]||'',opmerking:r[4]||''}));
-      levStore.setAll(imported); alert(`${imported.length} leveranciers geïmporteerd`);
-    };
-    reader.readAsText(file); e.target.value='';
-  };
-  const resetLev=()=>{ if(!window.confirm('Alle leveranciers wissen?')) return; levStore.setAll([]); };
-
-  const exportPrj = () => {
-    const rows=[];
-    prjs.forEach(p=>{p.subs.forEach(s=>{if(s.rks.length>0)s.rks.forEach(rk=>rows.push([p.nr,p.naam,s.naam,rk]));else rows.push([p.nr,p.naam,s.naam,'']);});if(p.subs.length===0)rows.push([p.nr,p.naam,'','']);});
-    downloadCSV('projecten.csv',['Projectnummer','Projectnaam','Subproject','Regelkast'],rows);
-  };
-  const importPrj = e => {
-    const file=e.target.files?.[0]; if(!file) return;
-    const reader=new FileReader();
-    reader.onload=ev=>{
-      const {rows}=parseCSV(ev.target.result);
-      const prjMap={};
-      rows.forEach(r=>{const pNr=r[0]?.trim(),pNm=r[1]?.trim(),sNm=r[2]?.trim(),rk=r[3]?.trim();if(!pNr)return;if(!prjMap[pNr])prjMap[pNr]={id:`p-${Date.now()}-${Math.random()}`,nr:pNr,naam:pNm||'',subs:[]};if(sNm){let s=prjMap[pNr].subs.find(x=>x.naam===sNm);if(!s){s={id:`s-${Date.now()}-${Math.random()}`,naam:sNm,rks:[]};prjMap[pNr].subs.push(s);}if(rk&&!s.rks.includes(rk))s.rks.push(rk);}});
-      const imported=Object.values(prjMap);
-      prjStore.setAll(imported); alert(`${imported.length} projecten geïmporteerd`);
-    };
-    reader.readAsText(file); e.target.value='';
-  };
-  const resetPrj=()=>{ if(!window.confirm('Alle projecten wissen?')) return; prjStore.setAll([]); };
-
-  const exportBest = () => {
-    const rows=[];
-    bests.forEach(b=>{const lev=levs.find(l=>l.id===b.levId),prj=prjs.find(p=>p.id===b.prjId),sub=prj?.subs.find(s=>s.id===b.subId);(b.arts.length>0?b.arts:[{}]).forEach(a=>{rows.push([b.status,lev?.naam||'',prj?.nr||'',sub?.naam||'',b.offNr||'',b.offDat||'',b.ioNr||'',b.bestDat||'',b.obNr||'',b.levBestNr||'',b.verwLev||'',b.pbNr||'',b.levDat||'',a.merk||'',a.type||'',a.n||'',a.opm||'']);});});
-    downloadCSV('bestellingen.csv',['Status','Leverancier','Project','Subproject','Offertenr','Offertedatum','IO Nr','Besteldatum','OB Nr','Lev.bestelnr','Verw.levering','Pakbonnr','Leverdatum','Merk','Type','Aantal','Opmerking'],rows);
-  };
-  const importBest = e => {
-    const file=e.target.files?.[0]; if(!file) return;
-    const reader=new FileReader();
-    reader.onload=ev=>{
-      const {rows}=parseCSV(ev.target.result);
-      const bMap={};
-      rows.forEach(r=>{const st=r[0]?.trim(),levNm=r[1]?.trim(),prjNr=r[2]?.trim(),subNm=r[3]?.trim(),ioNr=r[6]?.trim();if(!st)return;const lev=levs.find(l=>l.naam===levNm),prj=prjs.find(p=>p.nr===prjNr),sub=prj?.subs.find(s=>s.naam===subNm);const k=`${st}-${levNm}-${prjNr}-${subNm}-${ioNr}`;if(!bMap[k])bMap[k]={id:`b-${Date.now()}-${Math.random()}`,levId:lev?.id||'',prjId:prj?.id||'',subId:sub?.id||'',status:st,heeftOff:!!r[4],offNr:r[4]||'',offDat:r[5]||'',ioNr:r[6]||'',bestDat:r[7]||'',obNr:r[8]||'',levBestNr:r[9]||'',verwLev:r[10]||'',pbNr:r[11]||'',levDat:r[12]||'',arts:[]};const merk=r[13]?.trim(),type=r[14]?.trim();if(merk&&type)bMap[k].arts.push({id:`a-${Date.now()}-${Math.random()}`,merk,type,n:parseInt(r[15])||1,opm:r[16]||''});});
-      const imported=Object.values(bMap);
-      bestStore.setAll(imported); alert(`${imported.length} bestellingen geïmporteerd`);
-    };
-    reader.readAsText(file); e.target.value='';
-  };
-  const resetBest=()=>{ if(!window.confirm('Alle bestellingen wissen?')) return; bestStore.setAll([]); };
-
-  const exportAsset = () => downloadCSV('assets.csv',['Regelkast','Opnemercode','Merk','Type','Status','Uitgiftedatum','Aan wie','Firma'],assets.map(a=>[a.rk,a.opcode,a.merk,a.type,a.st,a.uitDat||'',a.aan||'',a.firma||'']));
-  const importAsset = e => {
-    const file=e.target.files?.[0]; if(!file) return;
-    const reader=new FileReader();
-    reader.onload=ev=>{
-      const {rows}=parseCSV(ev.target.result);
-      const imported=rows.map(r=>({id:`as-${Date.now()}-${Math.random()}`,rk:r[0]||'',opcode:r[1]||'',merk:r[2]||'',type:r[3]||'',st:r[4]||'beschikbaar',uitDat:r[5]||'',aan:r[6]||'',firma:r[7]||'',artId:''}));
-      assetStore.setAll(imported); alert(`${imported.length} assets geïmporteerd`);
-    };
-    reader.readAsText(file); e.target.value='';
-  };
-  const resetAsset=()=>{ if(!window.confirm('Alle assets wissen?')) return; assetStore.setAll([]); };
-
-  const sections = [
-    { t:"Leveranciers",  count:levs.length,   unit:"leverancier",  exp:exportLev,   imp:()=>fileInputLev.current?.click(),   ref:fileInputLev,   onChange:importLev,   reset:resetLev },
-    { t:"Projecten",     count:prjs.length,    unit:"project",      exp:exportPrj,   imp:()=>fileInputPrj.current?.click(),   ref:fileInputPrj,   onChange:importPrj,   reset:resetPrj },
-    { t:"Bestellingen",  count:bests.length,   unit:"bestelling",   exp:exportBest,  imp:()=>fileInputBest.current?.click(),  ref:fileInputBest,  onChange:importBest,  reset:resetBest },
-    { t:"Assetcodering", count:assets.length,  unit:"asset",        exp:exportAsset, imp:()=>fileInputAsset.current?.click(), ref:fileInputAsset, onChange:importAsset, reset:resetAsset },
-  ];
-
-  return React.createElement("div", { style:{ maxWidth:900 }},
-    React.createElement("div", { style:{ fontSize:11, fontWeight:700, color:C.mut, textTransform:"uppercase", letterSpacing:".08em", marginBottom:16 }}, "Instellingen — Data beheer"),
-
-    // Firebase setup guide
-    React.createElement("div", { style:card({ border:`1px solid ${fb?.isConfigured?C.grn+'40':C.acc+'40'}` }) },
-      React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }},
-        React.createElement(SH, { t:"Firebase configuratie" }),
-        React.createElement(Bdg, { v:fb?.isConfigured?"geleverd":"offerte", sm:true })
-      ),
-      fb?.isConfigured
-        ? React.createElement("div", { style:{ color:C.grn, fontSize:12 }}, "✓ Firebase is verbonden. Data wordt automatisch gesynchroniseerd.")
-        : React.createElement("div", null,
-            React.createElement("div", { style:{ fontSize:12, color:C.mut, marginBottom:12, lineHeight:1.7 }},
-              "Om data permanent op te slaan, configureer Firebase Firestore:"
-            ),
-            React.createElement("ol", { style:{ fontSize:12, color:C.mut, paddingLeft:20, lineHeight:2.2 }},
-              React.createElement("li", null, React.createElement("a", { href:"https://console.firebase.google.com", target:"_blank", style:{color:C.blue} }, "console.firebase.google.com"), " → Nieuw project aanmaken"),
-              React.createElement("li", null, 'Build → Firestore Database → "Create database" (test mode)'),
-              React.createElement("li", null, "Project Settings → Your apps → Web (</>) → App registreren"),
-              React.createElement("li", null, "Kopieer de ", React.createElement("code", { style:{background:C.bg, padding:"1px 6px", borderRadius:3, color:C.acc} }, "firebaseConfig"), " uit de SDK snippet"),
-              React.createElement("li", null, "Vervang de config bovenaan dit HTML-bestand (zoek naar ", React.createElement("code", { style:{background:C.bg, padding:"1px 6px", borderRadius:3, color:C.acc} }, "JOUW_API_KEY"), ")")
-            )
-          )
-    ),
-
-    sections.map(s => React.createElement("div", { key:s.t, style:card() },
-      React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }},
-        React.createElement(SH, { t:s.t }),
-        React.createElement("div", { style:{ display:"flex", gap:8 }},
-          React.createElement("button", { onClick:s.exp,   style:btn(C.grn,  false, { padding:"4px 11px", fontSize:11 }) }, "⬇ Export"),
-          React.createElement("button", { onClick:s.imp,   style:btn(C.blue, false, { padding:"4px 11px", fontSize:11 }) }, "⬆ Import"),
-          React.createElement("button", { onClick:s.reset, style:btn(C.red,  false, { padding:"4px 11px", fontSize:11 }) }, "🗑 Wissen")
-        )
-      ),
-      React.createElement("input", { ref:s.ref, type:"file", accept:".csv", onChange:s.onChange }),
-      React.createElement("div", { style:{ fontSize:12, color:C.mut }},
-        `${s.count} ${s.unit}${s.count!==1?"en/s":""} in systeem`
-      )
-    )),
-
-    React.createElement("div", { style:card({ border:`1px solid ${C.bdr}`, marginTop:8 }) },
-      React.createElement("div", { style:{ fontSize:10, color:C.acc, fontWeight:700, marginBottom:8, textTransform:"uppercase", letterSpacing:".06em" }}, "ℹ Instructies"),
-      React.createElement("ul", { style:{ fontSize:12, color:C.mut, paddingLeft:20, lineHeight:1.8 }},
-        React.createElement("li", null, "Export: Download huidige data als CSV (ook als backup)"),
-        React.createElement("li", null, "Import: Upload CSV om data te vervangen (overschrijft bestaande data)"),
-        React.createElement("li", null, "Wissen: Verwijder alle data van de betreffende sectie")
-      )
-    )
-  );
-}
-
-ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+// Boot
+window.addEventListener('DOMContentLoaded', () => {
+  window.DB.load();
+});
 </script>
 </body>
 </html>

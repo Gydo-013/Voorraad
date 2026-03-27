@@ -410,6 +410,7 @@
     text-align: center; margin-top: 20px;
   }
 </style>
+
 </head>
 <body>
 
@@ -520,6 +521,73 @@
     <div id="overzicht-content"></div>
   </div>
 
+    <!-- ══ PAGE: UITGIFTE ══ -->
+  <div id="page-uitgifte" class="page">
+    <div class="page-header">
+      <h1 class="page-title"><span>📤</span> Uitgifte</h1>
+      <div class="page-actions">
+        <button class="btn btn-secondary btn-sm" onclick="exportCSV('uitgifte')">⬇ CSV</button>
+      </div>
+    </div>
+    <div id="uitgifte-content"></div>
+  </div>
+    </div>
+    <div id="uitgifte-content"></div>
+  </div>
+
+  <!-- ══ PAGE: INSTELLINGEN ══ -->
+  <div id="page-instellingen" class="page">
+    <div class="page-header">
+      <h1 class="page-title"><span>⚙️</span> Instellingen</h1>
+    </div>
+    <div id="instellingen-content"></div>
+  </div>
+
+</main>
+
+<!-- Toast container -->
+<div id="toast"></div>
+
+
+<script>
+  </div>
+
+  <!-- ══ PAGE: BESTELLINGEN ══ -->
+  <div id="page-bestellingen" class="page">
+    <div class="page-header">
+      <h1 class="page-title"><span>📋</span> Bestellingen</h1>
+      <div class="page-actions">
+        <button class="btn btn-secondary btn-sm" onclick="exportCSV('bestellingen')">⬇ CSV</button>
+        <button class="btn btn-secondary btn-sm" onclick="showBestelForm('offerte')">+ Vanaf offerte</button>
+        <button class="btn btn-primary btn-sm" onclick="showBestelForm('bestelling')">+ Nieuwe bestelling</button>
+      </div>
+    </div>
+    <div id="bestel-form-container"></div>
+    <div id="bestel-list"></div>
+  </div>
+
+  <!-- ══ PAGE: ASSETCODERING ══ -->
+  <div id="page-assetcodering" class="page">
+    <div class="page-header">
+      <h1 class="page-title"><span>🏷</span> Assetcodering</h1>
+      <div class="page-actions">
+        <button class="btn btn-secondary btn-sm" onclick="exportCSV('assets')">⬇ CSV</button>
+      </div>
+    </div>
+    <div id="asset-content"></div>
+  </div>
+
+  <!-- ══ PAGE: OVERZICHT ══ -->
+  <div id="page-overzicht" class="page">
+    <div class="page-header">
+      <h1 class="page-title"><span>📊</span> Overzicht</h1>
+      <div class="page-actions">
+        <button class="btn btn-secondary btn-sm" onclick="exportCSV('overzicht')">⬇ CSV</button>
+      </div>
+    </div>
+    <div id="overzicht-content"></div>
+  </div>
+
   <!-- ══ PAGE: UITGIFTE ══ -->
   <div id="page-uitgifte" class="page">
     <div class="page-header">
@@ -562,10 +630,14 @@ let _fbConnected = false;
 
 // Firebase wordt geïnitialiseerd in DOMContentLoaded (zie onderaan)
 
-let _state = { leveranciers:[], projecten:[], bestellingen:[], assets:[] };
+</script>
+
+<script>
+
+let _state = { leveranciers:[], projecten:[], bestellingen:[], assets:[], pakbonnen:[], contacten:[] };
 
 function _loadLocal() {
-  ["leveranciers","projecten","bestellingen","assets"].forEach(k => {
+  ["leveranciers","projecten","bestellingen","assets","pakbonnen","contacten"].forEach(k => {
     try { _state[k] = JSON.parse(localStorage.getItem("ar_"+k)||"[]"); } catch(e){}
   });
 }
@@ -606,6 +678,8 @@ window.DB = {
       _state.projecten    = await _fsGetAll("projecten");
       _state.bestellingen = await _fsGetAll("bestellingen");
       _state.assets       = await _fsGetAll("assets");
+      _state.pakbonnen    = await _fsGetAll("pakbonnen");
+      _state.contacten    = await _fsGetAll("contacten");
     } else {
       _loadLocal();
     }
@@ -1599,194 +1673,380 @@ function ovClearFilters() {
 }
 
 // ════════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════════
 //  PAGE 6: UITGIFTE
 // ════════════════════════════════════════════════════════════
 
-function renderUitgifte() {
-  const assets  = DB.getAll('assets').filter(a => a.status !== 'uitgegeven');
-  const uitgegeven = DB.getAll('assets').filter(a => a.status === 'uitgegeven');
-  const u = APP.uitgifte;
+function pakbonNummer() {
+  const n = new Date();
+  const p = x => String(x).padStart(2,'0');
+  return String(n.getFullYear()) + p(n.getMonth()+1) + p(n.getDate()) + p(n.getHours()) + p(n.getMinutes()) + p(n.getSeconds());
+}
 
-  const alleRK = [...new Set(assets.map(a => a.regelkast))];
+function renderUitgifte() {
+  const assets    = DB.getAll('assets').filter(a => a.status !== 'uitgegeven');
+  const pakbonnen = DB.getAll('pakbonnen');
+  const contacten = DB.getAll('contacten');
+  const u = APP.uitgifte;
+  const alleRK = [...new Set(assets.map(a => a.regelkast))].filter(Boolean);
   const filtered = u.rkFilter ? assets.filter(a => a.regelkast === u.rkFilter) : assets;
 
-  const printBtn = document.getElementById('print-btn');
-  if (printBtn) printBtn.style.display = u.confirmData ? '' : 'none';
+  // Build contact dropdown options
+  const ontvangers = contacten.filter(c => c.type === 'ontvanger');
+  const uitgevers  = contacten.filter(c => c.type === 'uitgever');
 
-  document.getElementById('uitgifte-content').innerHTML = `
-    <!-- Bevestiging -->
-    ${u.confirmData ? `<div class="card" style="border-color:var(--green);background:rgba(34,197,94,0.05);margin-bottom:16px">
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <div>
-          <div style="font-weight:700;color:var(--green);margin-bottom:4px">✅ Uitgifte geregistreerd</div>
-          <div style="font-size:13px;color:var(--text2)">${u.confirmData.count} item(s) uitgegeven aan <strong>${esc(u.confirmData.aanWie)}</strong> (${esc(u.confirmData.firma)}) op ${fmt(u.confirmData.datum)}</div>
-        </div>
-        <button class="btn btn-secondary btn-sm" onclick="printOntvangst()">🖨 Afdrukken / Ondertekenen</button>
-      </div>
-    </div>` : ''}
+  function contactOpties(lijst, prefix) {
+    if (!lijst.length) return '';
+    return '<option value="">— kies uit opgeslagen —</option>' +
+      lijst.map(c => '<option value="' + c.id + '">' + esc(c.naam) + (c.firma ? ' (' + esc(c.firma) + ')' : '') + '</option>').join('');
+  }
 
-    <!-- Formulier -->
-    <div class="card" style="margin-bottom:16px">
-      <div class="card-header"><div class="card-title">Uitgifte registreren</div></div>
-      <div class="form-grid">
-        <div class="form-group"><label>Aan wie *</label><input id="uit-aanwie" placeholder="Naam"></div>
-        <div class="form-group"><label>Firma *</label><input id="uit-firma" placeholder="Bedrijfsnaam"></div>
-        <div class="form-group"><label>Datum</label><input id="uit-datum" type="date" value="${today()}"></div>
-      </div>
-      <div style="margin-top:12px">
-        <button class="btn btn-primary" id="uit-btn" onclick="doUitgifte()" ${u.selected.length?'':'disabled'}>
-          ✓ Uitgeven${u.selected.length ? ` (${u.selected.length})` : ''}
-        </button>
-      </div>
-    </div>
+  document.getElementById('uitgifte-content').innerHTML =
 
-    <!-- Tabbladen -->
-    <div style="display:flex;gap:8px;margin-bottom:12px">
-      <button class="btn ${u.tab==='beschikbaar'?'btn-primary':'btn-secondary'} btn-sm" onclick="uitTab('beschikbaar')">Beschikbaar (${assets.length})</button>
-      <button class="btn ${u.tab==='uitgegeven'?'btn-primary':'btn-secondary'} btn-sm" onclick="uitTab('uitgegeven')">Uitgegeven (${uitgegeven.length})</button>
-    </div>
+    // ── Uitgifte formulier ──
+    '<div class="card" style="margin-bottom:16px">' +
+      '<div class="card-header"><div class="card-title">📋 Nieuwe uitgifte</div></div>' +
 
-    ${u.tab === 'beschikbaar' ? `
-      <div style="margin-bottom:8px">
-        <select onchange="uitSetRK(this.value)" style="max-width:200px">
-          <option value="">Alle regelkasten</option>
-          ${alleRK.map(rk => `<option value="${esc(rk)}" ${u.rkFilter===rk?'selected':''}>${esc(rk)}</option>`).join('')}
-        </select>
-      </div>
-      <div class="tbl-wrap"><table>
-        <thead><tr>
-          <th><input type="checkbox" onchange="uitSelectAll(this.checked,${JSON.stringify(filtered.map(a=>a.id)).replace(/"/g,'&quot;')})" style="accent-color:var(--accent)"></th>
-          <th>Regelkast</th><th>Opnemercode</th><th>Merk</th><th>Type</th>
-        </tr></thead>
-        <tbody>${filtered.map(a => `<tr onclick="uitToggle('${a.id}')" style="cursor:pointer">
-          <td><input type="checkbox" ${u.selected.includes(a.id)?'checked':''} onchange="uitToggle('${a.id}')" onclick="event.stopPropagation()" style="accent-color:var(--accent)"></td>
-          <td><span class="badge badge-blue">${esc(a.regelkast)}</span></td>
-          <td><span style="color:var(--accent);font-family:var(--font-mono)">${esc(a.code)}</span></td>
-          <td>${esc(a.merk)}</td><td>${esc(a.type)}</td>
-        </tr>`).join('')}</tbody>
-      </table></div>` :
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">' +
 
-    `<div class="tbl-wrap"><table>
-      <thead><tr><th>Datum</th><th>Regelkast</th><th>Opnemercode</th><th>Merk</th><th>Type</th><th>Aan wie</th><th>Firma</th></tr></thead>
-      <tbody>${uitgegeven.map(a => `<tr>
-        <td>${fmt(a.uitgiftedatum)}</td>
-        <td><span class="badge badge-blue">${esc(a.regelkast)}</span></td>
-        <td><span style="color:var(--accent);font-family:var(--font-mono)">${esc(a.code)}</span></td>
-        <td>${esc(a.merk)}</td><td>${esc(a.type)}</td>
-        <td>${esc(a.aanWie||'')}</td><td>${esc(a.firma||'')}</td>
-      </tr>`).join('')}</tbody>
-    </table></div>`}
-  `;
+        // Ontvanger
+        '<div>' +
+          '<div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Ontvanger</div>' +
+          (ontvangers.length ? '<div class="form-group" style="margin-bottom:10px"><label>Kies opgeslagen ontvanger</label>' +
+            '<select onchange="uitLaadContact(\'ontvanger\',this.value)">' +
+            '<option value="">— nieuw / handmatig —</option>' +
+            ontvangers.map(c => '<option value="' + c.id + '">' + esc(c.naam) + (c.firma ? ' (' + esc(c.firma) + ')' : '') + '</option>').join('') +
+            '</select></div>' : '') +
+          '<div class="form-grid" style="grid-template-columns:1fr 1fr;gap:8px">' +
+            '<div class="form-group full"><label>Ter attentie van</label><input id="uit-ontv-naam" placeholder="Naam ontvanger"></div>' +
+            '<div class="form-group full"><label>Firma</label><input id="uit-ontv-firma" placeholder="Bedrijfsnaam"></div>' +
+            '<div class="form-group full"><label>Adres</label><input id="uit-ontv-adres" placeholder="Straat + huisnummer"></div>' +
+            '<div class="form-group"><label>Postcode</label><input id="uit-ontv-pc" placeholder="1234 AB"></div>' +
+            '<div class="form-group"><label>Plaats</label><input id="uit-ontv-plaats" placeholder="Stad"></div>' +
+          '</div>' +
+          '<div style="margin-top:8px"><label style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Leveringsadres (indien afwijkend)</label>' +
+            '<div class="form-grid" style="grid-template-columns:1fr 1fr;gap:8px">' +
+              '<div class="form-group full"><input id="uit-lev-adres" placeholder="Straat + huisnummer"></div>' +
+              '<div class="form-group"><input id="uit-lev-pc" placeholder="1234 AB"></div>' +
+              '<div class="form-group"><input id="uit-lev-plaats" placeholder="Stad"></div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+
+        // Uitgever
+        '<div>' +
+          '<div style="font-size:11px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Uitgever</div>' +
+          (uitgevers.length ? '<div class="form-group" style="margin-bottom:10px"><label>Kies opgeslagen uitgever</label>' +
+            '<select onchange="uitLaadContact(\'uitgever\',this.value)">' +
+            '<option value="">— nieuw / handmatig —</option>' +
+            uitgevers.map(c => '<option value="' + c.id + '">' + esc(c.naam) + (c.firma ? ' (' + esc(c.firma) + ')' : '') + '</option>').join('') +
+            '</select></div>' : '') +
+          '<div class="form-group" style="margin-bottom:8px"><label>Bedrijfslogo URL (optioneel)</label><input id="uit-logo" placeholder="https://..."></div>' +
+          '<div class="form-grid" style="grid-template-columns:1fr 1fr;gap:8px">' +
+            '<div class="form-group full"><label>Naam uitgever</label><input id="uit-uitg-naam" placeholder="Naam uitgever"></div>' +
+            '<div class="form-group full"><label>Firma</label><input id="uit-uitg-firma" placeholder="Bedrijfsnaam"></div>' +
+            '<div class="form-group full"><label>Adres</label><input id="uit-uitg-adres" placeholder="Straat + huisnummer"></div>' +
+            '<div class="form-group"><label>Postcode</label><input id="uit-uitg-pc" placeholder="1234 AB"></div>' +
+            '<div class="form-group"><label>Plaats</label><input id="uit-uitg-plaats" placeholder="Stad"></div>' +
+          '</div>' +
+        '</div>' +
+
+      '</div>' +
+
+      '<div style="display:flex;align-items:center;gap:12px;margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">' +
+        '<div class="form-group" style="margin:0"><label>Datum</label><input id="uit-datum" type="date" value="' + today() + '" style="width:160px"></div>' +
+        '<div style="margin-top:16px;display:flex;gap:8px">' +
+          '<button class="btn btn-secondary btn-sm" onclick="uitSlaContactOp(\'ontvanger\')">💾 Ontvanger opslaan</button>' +
+          '<button class="btn btn-secondary btn-sm" onclick="uitSlaContactOp(\'uitgever\')">💾 Uitgever opslaan</button>' +
+        '</div>' +
+        '<div style="margin-top:16px;margin-left:auto">' +
+          '<button class="btn btn-primary" id="uit-btn" onclick="doUitgifte()" ' + (u.selected.length ? '' : 'disabled') + '>' +
+            '✓ Uitgifte registreren' + (u.selected.length ? ' (' + u.selected.length + ')' : '') +
+          '</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+
+    // ── Tabbladen ──
+    '<div style="display:flex;gap:8px;margin-bottom:12px">' +
+      '<button class="btn ' + (u.tab==='beschikbaar'?'btn-primary':'btn-secondary') + ' btn-sm" onclick="uitTab(\'beschikbaar\')">Beschikbaar (' + assets.length + ')</button>' +
+      '<button class="btn ' + (u.tab==='pakbonnen'?'btn-primary':'btn-secondary') + ' btn-sm" onclick="uitTab(\'pakbonnen\')">Pakbonnen (' + pakbonnen.length + ')</button>' +
+    '</div>' +
+
+    // ── Beschikbaar tab ──
+    (u.tab === 'beschikbaar' ?
+      '<div style="margin-bottom:8px">' +
+        '<select onchange="uitSetRK(this.value)" style="max-width:200px">' +
+          '<option value="">Alle regelkasten</option>' +
+          alleRK.map(rk => '<option value="' + esc(rk) + '"' + (u.rkFilter===rk?' selected':'') + '>' + esc(rk) + '</option>').join('') +
+        '</select>' +
+      '</div>' +
+      '<div class="tbl-wrap"><table>' +
+        '<thead><tr>' +
+          '<th><input type="checkbox" onchange="uitSelectAll(this.checked)" style="accent-color:var(--accent)"></th>' +
+          '<th>Regelkast</th><th>Opnemercode</th><th>Merk</th><th>Type</th>' +
+        '</tr></thead>' +
+        '<tbody>' + (filtered.length ? filtered.map(a =>
+          '<tr onclick="uitToggle(\'' + a.id + '\')" style="cursor:pointer;' + (u.selected.includes(a.id) ? 'background:rgba(249,115,22,0.06)' : '') + '">' +
+            '<td><input type="checkbox" ' + (u.selected.includes(a.id)?'checked':'') + ' onchange="uitToggle(\'' + a.id + '\')" onclick="event.stopPropagation()" style="accent-color:var(--accent)"></td>' +
+            '<td><span class="badge badge-blue">' + esc(a.regelkast) + '</span></td>' +
+            '<td><span style="color:var(--accent);font-family:var(--font-mono)">' + esc(a.code) + '</span></td>' +
+            '<td>' + esc(a.merk) + '</td><td>' + esc(a.type) + '</td>' +
+          '</tr>'
+        ).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:24px">Geen beschikbare assets</td></tr>') +
+        '</tbody>' +
+      '</table></div>'
+
+    // ── Pakbonnen tab ──
+    : '<div class="tbl-wrap"><table>' +
+        '<thead><tr><th>Pakbonnummer</th><th>Datum</th><th>Ontvanger</th><th>Firma</th><th>Aantal items</th><th></th></tr></thead>' +
+        '<tbody>' + (pakbonnen.length ? [...pakbonnen].reverse().map(pb =>
+          '<tr>' +
+            '<td><span style="font-family:var(--font-mono);color:var(--accent);font-size:12px">' + esc(pb.nummer) + '</span></td>' +
+            '<td>' + fmt(pb.datum) + '</td>' +
+            '<td>' + esc(pb.ontvNaam || '—') + '</td>' +
+            '<td>' + esc(pb.ontvFirma || '—') + '</td>' +
+            '<td><span class="badge badge-orange">' + (pb.items ? pb.items.length : 0) + '</span></td>' +
+            '<td class="td-actions">' +
+              '<button class="btn btn-primary btn-sm" onclick="printPakbon(\'' + pb.id + '\')">🖨 Print</button>' +
+              '<button class="btn btn-danger btn-sm" onclick="deletePakbon(\'' + pb.id + '\')">🗑</button>' +
+            '</td>' +
+          '</tr>'
+        ).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:24px">Nog geen pakbonnen gegenereerd</td></tr>') +
+        '</tbody>' +
+      '</table></div>'
+    );
 }
 
 function uitTab(t) { APP.uitgifte.tab = t; renderUitgifte(); }
 function uitSetRK(v) { APP.uitgifte.rkFilter = v; renderUitgifte(); }
+
 function uitToggle(id) {
   const s = APP.uitgifte.selected;
   const i = s.indexOf(id);
   if (i === -1) s.push(id); else s.splice(i, 1);
   renderUitgifte();
 }
-function uitSelectAll(checked, ids) {
-  APP.uitgifte.selected = checked ? [...ids] : [];
+
+function uitSelectAll(checked) {
+  const assets  = DB.getAll('assets').filter(a => a.status !== 'uitgegeven');
+  const filtered = APP.uitgifte.rkFilter ? assets.filter(a => a.regelkast === APP.uitgifte.rkFilter) : assets;
+  APP.uitgifte.selected = checked ? filtered.map(a => a.id) : [];
+  renderUitgifte();
+}
+
+function uitLaadContact(type, id) {
+  if (!id) return;
+  const c = DB.getAll('contacten').find(x => x.id === id);
+  if (!c) return;
+  const prefix = type === 'ontvanger' ? 'ontv' : 'uitg';
+  if (document.getElementById('uit-' + prefix + '-naam'))  document.getElementById('uit-' + prefix + '-naam').value  = c.naam  || '';
+  if (document.getElementById('uit-' + prefix + '-firma')) document.getElementById('uit-' + prefix + '-firma').value = c.firma || '';
+  if (document.getElementById('uit-' + prefix + '-adres')) document.getElementById('uit-' + prefix + '-adres').value = c.adres || '';
+  if (document.getElementById('uit-' + prefix + '-pc'))    document.getElementById('uit-' + prefix + '-pc').value    = c.pc    || '';
+  if (document.getElementById('uit-' + prefix + '-plaats'))document.getElementById('uit-' + prefix + '-plaats').value= c.plaats|| '';
+  if (type === 'uitgever' && document.getElementById('uit-logo')) document.getElementById('uit-logo').value = c.logo || '';
+}
+
+async function uitSlaContactOp(type) {
+  const prefix = type === 'ontvanger' ? 'ontv' : 'uitg';
+  const naam = document.getElementById('uit-' + prefix + '-naam')?.value.trim();
+  if (!naam) { toast('Vul minimaal een naam in', 'error'); return; }
+  const data = {
+    type,
+    naam,
+    firma:  document.getElementById('uit-' + prefix + '-firma')?.value.trim() || '',
+    adres:  document.getElementById('uit-' + prefix + '-adres')?.value.trim() || '',
+    pc:     document.getElementById('uit-' + prefix + '-pc')?.value.trim()    || '',
+    plaats: document.getElementById('uit-' + prefix + '-plaats')?.value.trim()|| '',
+    logo:   type === 'uitgever' ? (document.getElementById('uit-logo')?.value.trim() || '') : ''
+  };
+  await DB.add('contacten', data);
+  toast((type === 'ontvanger' ? 'Ontvanger' : 'Uitgever') + ' opgeslagen', 'success');
   renderUitgifte();
 }
 
 async function doUitgifte() {
-  const aanWie = document.getElementById('uit-aanwie')?.value.trim();
-  const firma  = document.getElementById('uit-firma')?.value.trim();
-  const datum  = document.getElementById('uit-datum')?.value || today();
-  if (!aanWie) { toast('Vul "Aan wie" in','error'); return; }
-  if (!firma)  { toast('Vul firma in','error'); return; }
-  if (!APP.uitgifte.selected.length) { toast('Selecteer items','error'); return; }
+  if (!APP.uitgifte.selected.length) { toast('Selecteer items', 'error'); return; }
 
-  const ids = [...APP.uitgifte.selected];
+  const datum = document.getElementById('uit-datum')?.value || today();
+  const ontvNaam   = document.getElementById('uit-ontv-naam')?.value.trim()  || '';
+  const ontvFirma  = document.getElementById('uit-ontv-firma')?.value.trim() || '';
+  const ontvAdres  = document.getElementById('uit-ontv-adres')?.value.trim() || '';
+  const ontvPc     = document.getElementById('uit-ontv-pc')?.value.trim()    || '';
+  const ontvPlaats = document.getElementById('uit-ontv-plaats')?.value.trim()|| '';
+  const levAdres   = document.getElementById('uit-lev-adres')?.value.trim()  || '';
+  const levPc      = document.getElementById('uit-lev-pc')?.value.trim()     || '';
+  const levPlaats  = document.getElementById('uit-lev-plaats')?.value.trim() || '';
+  const uitgNaam   = document.getElementById('uit-uitg-naam')?.value.trim()  || '';
+  const uitgFirma  = document.getElementById('uit-uitg-firma')?.value.trim() || '';
+  const uitgAdres  = document.getElementById('uit-uitg-adres')?.value.trim() || '';
+  const uitgPc     = document.getElementById('uit-uitg-pc')?.value.trim()    || '';
+  const uitgPlaats = document.getElementById('uit-uitg-plaats')?.value.trim()|| '';
+  const logo       = document.getElementById('uit-logo')?.value.trim()       || '';
+
+  const nummer = pakbonNummer();
+  const ids    = [...APP.uitgifte.selected];
+  const items  = DB.getAll('assets').filter(a => ids.includes(a.id));
+
+  // Update asset status
   for (const id of ids) {
-    await DB.update('assets', id, { status:'uitgegeven', aanWie, firma, uitgiftedatum: datum });
+    await DB.update('assets', id, {
+      status: 'uitgegeven', aanWie: ontvNaam, firma: ontvFirma, uitgiftedatum: datum
+    });
   }
-  APP.lastUitgifteIds = ids;
-  APP.uitgifte.confirmData = { aanWie, firma, datum, count: ids.length };
+
+  // Save pakbon
+  const pakbon = {
+    nummer, datum,
+    ontvNaam, ontvFirma, ontvAdres, ontvPc, ontvPlaats,
+    levAdres, levPc, levPlaats,
+    uitgNaam, uitgFirma, uitgAdres, uitgPc, uitgPlaats,
+    logo,
+    items: items.map(a => ({ id: a.id, code: a.code, regelkast: a.regelkast, merk: a.merk, type: a.type }))
+  };
+  await DB.add('pakbonnen', pakbon);
+
+  toast('Uitgifte geregistreerd — Pakbon ' + nummer, 'success');
   APP.uitgifte.selected = [];
-  toast(`${ids.length} item(s) uitgegeven`,'success');
+  APP.uitgifte.tab = 'pakbonnen';
   renderUitgifte();
+
+  // Auto-print
+  setTimeout(() => printPakbonData(pakbon), 300);
 }
 
-function printOntvangst() {
-  const d = APP.uitgifte.confirmData;
-  if (!d) return;
-  const ids = APP.lastUitgifteIds;
-  const items = DB.getAll('assets').filter(a => ids.includes(a.id));
-  const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="UTF-8">
-    <title>Ontvangstbewijs</title>
-    <style>
-      body { font-family: Arial, sans-serif; padding: 40px; color: #111; }
-      h2 { margin-bottom: 4px; }
-      p { margin: 2px 0; font-size: 14px; color: #555; }
-      table { width: 100%; border-collapse: collapse; margin-top: 24px; font-size: 13px; }
-      th { background: #f5f5f5; padding: 8px 12px; text-align: left; border: 1px solid #ddd; }
-      td { padding: 8px 12px; border: 1px solid #ddd; }
-      .sigs { display: flex; gap: 60px; margin-top: 60px; }
-      .sig-box { flex: 1; border-top: 1px solid #999; padding-top: 8px; font-size: 12px; color: #555; }
-      .print-btn { background: #f97316; color: white; border: none; padding: 10px 20px; cursor: pointer; font-size: 14px; border-radius: 6px; margin-bottom: 20px; }
-      @media print { .print-btn { display: none; } }
-    
-  /* ── LOGIN SCREEN ── */
-  #login-screen {
-    position: fixed; inset: 0;
-    background: var(--bg);
-    display: flex; align-items: center; justify-content: center;
-    z-index: 9999;
-    flex-direction: column;
-  }
-  #login-screen.hidden { display: none; }
-  .login-box {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 36px 40px;
-    width: 360px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-  }
-  .login-logo {
-    font-family: var(--font-mono);
-    font-size: 11px; font-weight: 700;
-    letter-spacing: 0.15em; text-transform: uppercase;
-    color: var(--accent); margin-bottom: 6px;
-  }
-  .login-title {
-    font-size: 22px; font-weight: 700;
-    margin-bottom: 28px; letter-spacing: -0.02em;
-  }
-  .login-error {
-    background: rgba(239,68,68,0.1);
-    border: 1px solid rgba(239,68,68,0.3);
-    border-radius: 7px; padding: 10px 12px;
-    font-size: 13px; color: var(--red);
-    margin-bottom: 14px; display: none;
-  }
-  .login-error.show { display: block; }
-  .login-footer {
-    font-size: 11px; color: var(--text3);
-    text-align: center; margin-top: 20px;
-  }
-</style></head><body>
-    <button class="print-btn" onclick="window.print()">🖨 Afdrukken</button>
-    <h2>Ontvangstbewijs</h2>
-    <p>Datum: <strong>${fmt(d.datum)}</strong></p>
-    <p>Aan wie: <strong>${esc(d.aanWie)}</strong></p>
-    <p>Firma: <strong>${esc(d.firma)}</strong></p>
-    <table><thead><tr><th>Regelkast</th><th>Opnemercode</th><th>Merk</th><th>Type</th></tr></thead>
-    <tbody>${items.map(a => `<tr><td>${esc(a.regelkast)}</td><td>${esc(a.code)}</td><td>${esc(a.merk)}</td><td>${esc(a.type)}</td></tr>`).join('')}
-    </tbody></table>
-    <div class="sigs">
-      <div class="sig-box">Handtekening afnemer</div>
-      <div class="sig-box">Handtekening uitgever</div>
-    </div>
-    </body></html>`;
-  const w = window.open('', '_blank');
-  w.document.write(html);
-  w.document.close();
+async function deletePakbon(id) {
+  confirm('Pakbon verwijderen', 'Weet je zeker dat je deze pakbon wilt verwijderen? De assets blijven op status "uitgegeven".', async () => {
+    await DB.delete('pakbonnen', id);
+    toast('Pakbon verwijderd');
+    renderUitgifte();
+  });
 }
+
+function printPakbon(id) {
+  const pb = DB.getAll('pakbonnen').find(x => x.id === id);
+  if (pb) printPakbonData(pb);
+}
+
+function dash(val) {
+  // Returns value or underscores for blank fields on print
+  return val && val.trim() ? val.trim() : '___________________________';
+}
+
+function printPakbonData(pb) {
+  const items = pb.items || [];
+  const rows  = items.map(a =>
+    '<tr>' +
+      '<td>' + (a.regelkast || '—') + '</td>' +
+      '<td style="font-family:monospace;font-weight:600">' + (a.code || '—') + '</td>' +
+      '<td>' + (a.merk || '—') + '</td>' +
+      '<td>' + (a.type || '—') + '</td>' +
+    '</tr>'
+  ).join('');
+
+  const logoHtml = pb.logo
+    ? '<img src="' + pb.logo + '" style="max-height:60px;max-width:180px;object-fit:contain;display:block;margin-bottom:8px">'
+    : '';
+
+  const html = '<!DOCTYPE html><html lang="nl"><head><meta charset="UTF-8"><title>Pakbon ' + pb.nummer + '</title>' +
+  '<style>' +
+    '* { box-sizing: border-box; margin: 0; padding: 0; }' +
+    'body { font-family: Arial, sans-serif; font-size: 13px; color: #111; padding: 30px 36px; }' +
+    '.header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 28px; padding-bottom: 16px; border-bottom: 2px solid #e5e7eb; }' +
+    '.header-left { flex: 1; }' +
+    '.header-right { text-align: right; min-width: 220px; }' +
+    '.pakbon-nr { font-size: 11px; color: #6b7280; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 2px; }' +
+    '.pakbon-val { font-size: 14px; font-weight: 700; font-family: monospace; color: #f97316; }' +
+    '.block-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #9ca3af; margin-bottom: 6px; }' +
+    '.block-val { font-size: 13px; color: #111; line-height: 1.6; }' +
+    '.addr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }' +
+    '.addr-block { border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px 14px; }' +
+    'table { width: 100%; border-collapse: collapse; margin: 8px 0 28px; font-size: 13px; }' +
+    'th { background: #f3f4f6; padding: 9px 12px; text-align: left; border: 1px solid #d1d5db; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #6b7280; }' +
+    'td { padding: 9px 12px; border: 1px solid #d1d5db; }' +
+    'tbody tr:nth-child(even) { background: #f9fafb; }' +
+    '.sigs { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; margin-top: 48px; padding-top: 20px; border-top: 1px solid #e5e7eb; }' +
+    '.sig-name { font-size: 13px; font-weight: 600; margin-bottom: 4px; }' +
+    '.sig-line { border-top: 1px solid #9ca3af; margin-top: 48px; padding-top: 6px; font-size: 11px; color: #9ca3af; }' +
+    '.print-btn { background: #f97316; color: white; border: none; padding: 9px 18px; cursor: pointer; font-size: 13px; border-radius: 6px; margin-bottom: 20px; }' +
+    '@media print { .print-btn { display: none; } body { padding: 16px 20px; } }' +
+  '</style></head><body>' +
+
+  '<button class="print-btn" onclick="window.print()">🖨 Afdrukken</button>' +
+
+  '<div class="header">' +
+    '<div class="header-left">' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">' +
+
+        // Ter attentie van
+        '<div>' +
+          '<div class="block-label">Ter attentie van</div>' +
+          '<div class="block-val">' +
+            '<strong>' + dash(pb.ontvNaam) + '</strong><br>' +
+            dash(pb.ontvFirma) + '<br>' +
+            dash(pb.ontvAdres) + '<br>' +
+            dash(pb.ontvPc) + ' ' + dash(pb.ontvPlaats) +
+          '</div>' +
+        '</div>' +
+
+        // Leveringsadres
+        '<div>' +
+          '<div class="block-label">Leveringsadres</div>' +
+          '<div class="block-val">' +
+            dash(pb.levAdres) + '<br>' +
+            dash(pb.levPc) + ' ' + dash(pb.levPlaats) +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+
+    // Rechts: logo + uitgever
+    '<div class="header-right">' +
+      logoHtml +
+      '<div class="block-label" style="text-align:right">Uitgever</div>' +
+      '<div class="block-val" style="text-align:right">' +
+        '<strong>' + dash(pb.uitgFirma) + '</strong><br>' +
+        dash(pb.uitgNaam) + '<br>' +
+        dash(pb.uitgAdres) + '<br>' +
+        dash(pb.uitgPc) + ' ' + dash(pb.uitgPlaats) +
+      '</div>' +
+      '<div style="margin-top:10px;text-align:right">' +
+        '<div class="pakbon-nr">Pakbon</div>' +
+        '<div class="pakbon-val">' + pb.nummer + '</div>' +
+        '<div style="font-size:11px;color:#6b7280;margin-top:2px">Datum: ' + fmt(pb.datum) + '</div>' +
+      '</div>' +
+    '</div>' +
+  '</div>' +
+
+  // Componenten tabel
+  '<div class="block-label" style="margin-bottom:8px">Componenten</div>' +
+  '<table>' +
+    '<thead><tr><th>Regelkast</th><th>Opnemercode</th><th>Merk</th><th>Type</th></tr></thead>' +
+    '<tbody>' + (rows || '<tr><td colspan="4" style="text-align:center;color:#9ca3af">Geen items</td></tr>') + '</tbody>' +
+  '</table>' +
+
+  // Handtekeningen
+  '<div class="sigs">' +
+    '<div>' +
+      '<div class="sig-name">' + dash(pb.ontvNaam) + '</div>' +
+      '<div style="font-size:11px;color:#6b7280;margin-bottom:36px">Ontvanger</div>' +
+      '<div class="sig-line">Handtekening ontvanger</div>' +
+    '</div>' +
+    '<div>' +
+      '<div class="sig-name">' + dash(pb.uitgNaam) + '</div>' +
+      '<div style="font-size:11px;color:#6b7280;margin-bottom:36px">Uitgever</div>' +
+      '<div class="sig-line">Handtekening uitgever</div>' +
+    '</div>' +
+  '</div>' +
+
+  '</body></html>';
+
+  const w = window.open('', '_blank');
+  if (w) { w.document.write(html); w.document.close(); }
+}
+
 
 // ════════════════════════════════════════════════════════════
 //  PAGE 7: INSTELLINGEN
@@ -1796,188 +2056,196 @@ function renderInstellingen() {
   const connected = DB.isConnected();
   const counts = {
     leveranciers: DB.getAll('leveranciers').length,
-    projecten: DB.getAll('projecten').length,
+    projecten:    DB.getAll('projecten').length,
     bestellingen: DB.getAll('bestellingen').length,
-    assets: DB.getAll('assets').length
+    assets:       DB.getAll('assets').length,
+    pakbonnen:    DB.getAll('pakbonnen').length,
+    contacten:    DB.getAll('contacten').length
   };
 
-  document.getElementById('instellingen-content').innerHTML = `
-    <!-- Firebase status -->
-    <div class="card" style="margin-bottom:16px">
-      <div class="card-header"><div class="card-title">🔥 Firebase configuratie</div></div>
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-        <div style="width:10px;height:10px;border-radius:50%;background:${connected?'var(--green)':'var(--yellow)'}"></div>
-        <span style="font-size:14px;font-weight:600">${connected ? 'Verbonden met Firebase' : 'Lokale modus (geen Firebase)'}</span>
-      </div>
-      ${!connected ? `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:16px;font-size:13px;line-height:1.8">
-        <strong>Instructies om Firebase te koppelen:</strong><br>
-        1. Ga naar <a href="https://console.firebase.google.com" target="_blank" style="color:var(--accent)">console.firebase.google.com</a><br>
-        2. Maak een nieuw project aan<br>
-        3. Activeer <strong>Firestore Database</strong> (test mode)<br>
-        4. Ga naar Projectinstellingen → Web app registreren<br>
-        5. Kopieer de <code>firebaseConfig</code><br>
-        6. Plak deze bovenaan dit HTML-bestand (vervang <code>JOUW_API_KEY</code> etc.)
-      </div>` : ''}
-    </div>
+  document.getElementById('instellingen-content').innerHTML =
 
-    <!-- Data beheer -->
-    <div class="card">
-      <div class="card-header"><div class="card-title">💾 Data beheer</div></div>
-      ${['leveranciers','projecten','bestellingen','assets'].map(col => `
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)">
-          <div>
-            <div style="font-weight:600;text-transform:capitalize">${col}</div>
-            <div style="font-size:12px;color:var(--text2)">${counts[col]} items</div>
-          </div>
-          <div style="display:flex;gap:6px">
-            <button class="btn btn-secondary btn-sm" onclick="exportCSV('${col}')">⬇ Export</button>
-            <label class="btn btn-secondary btn-sm" style="cursor:pointer">
-              ⬆ Import
-              <input type="file" accept=".csv" style="display:none" onchange="importCSV('${col}',this)">
-            </label>
-            <button class="btn btn-danger btn-sm" onclick="clearData('${col}')">🗑 Wissen</button>
-          </div>
-        </div>`).join('')}
-    </div>
+    // Firebase status
+    '<div class="card" style="margin-bottom:16px">' +
+      '<div class="card-header"><div class="card-title">🔥 Firebase configuratie</div></div>' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">' +
+        '<div style="width:10px;height:10px;border-radius:50%;background:' + (connected?'var(--green)':'var(--yellow)') + '"></div>' +
+        '<span style="font-size:14px;font-weight:600">' + (connected ? 'Verbonden met Firebase' : 'Lokale modus (geen Firebase)') + '</span>' +
+      '</div>' +
+      (!connected ? '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:16px;font-size:13px;line-height:1.8">' +
+        '<strong>Instructies om Firebase te koppelen:</strong><br>' +
+        '1. Ga naar <a href="https://console.firebase.google.com" target="_blank" style="color:var(--accent)">console.firebase.google.com</a><br>' +
+        '2. Maak een nieuw project aan<br>' +
+        '3. Activeer <strong>Firestore Database</strong> (test mode)<br>' +
+        '4. Ga naar Projectinstellingen → Web app registreren<br>' +
+        '5. Kopieer de <code>firebaseConfig</code><br>' +
+        '6. Plak deze bovenaan dit HTML-bestand' +
+      '</div>' : '') +
+    '</div>' +
 
-    <!-- Gebruikersbeheer -->
-    <div class="card" style="margin-top:16px" id="users-card">
-      <div class="card-header">
-        <div class="card-title">👥 Gebruikersbeheer</div>
-        <button class="btn btn-primary btn-sm" onclick="showAddUserForm()">+ Gebruiker toevoegen</button>
-      </div>
-      <div id="add-user-form" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px">
-        <div class="form-grid" style="margin-bottom:10px">
-          <div class="form-group"><label>E-mailadres</label><input type="email" id="new-user-email" placeholder="naam@bedrijf.nl"></div>
-          <div class="form-group"><label>Wachtwoord</label><input type="password" id="new-user-pw" placeholder="Min. 6 tekens"></div>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <button class="btn btn-primary btn-sm" onclick="addUser()">✓ Aanmaken</button>
-          <button class="btn btn-secondary btn-sm" onclick="hideAddUserForm()">Annuleren</button>
-          <span id="add-user-msg" style="font-size:12px"></span>
-        </div>
-      </div>
-      <div id="users-list"><div style="font-size:13px;color:var(--text3);padding:8px 0">Gebruikerslijst wordt geladen...</div></div>
-      <div style="font-size:12px;color:var(--text3);margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
-        ⚠️ Gebruikers worden beheerd via Firebase Authentication. Wachtwoorden worden nooit opgeslagen in Firestore.
-      </div>
-    </div>
+    // Contacten beheer
+    '<div class="card" style="margin-bottom:16px">' +
+      '<div class="card-header">' +
+        '<div class="card-title">📇 Contacten (ontvangers &amp; uitgevers)</div>' +
+        '<button class="btn btn-primary btn-sm" onclick="showContactForm()">+ Nieuw contact</button>' +
+      '</div>' +
+      '<div id="contact-form-container"></div>' +
+      '<div id="contacten-list"></div>' +
+    '</div>' +
 
-    <!-- Instructies -->
-    <div class="card" style="margin-top:16px">
-      <div class="card-header"><div class="card-title">ℹ️ Instructies</div></div>
-      <div style="font-size:13px;color:var(--text2);line-height:1.8">
-        <strong style="color:var(--text)">Export:</strong> Download de data als CSV-bestand (backup).<br>
-        <strong style="color:var(--text)">Import:</strong> Upload een CSV om data te vervangen. Het formaat moet overeenkomen met de export.<br>
-        <strong style="color:var(--text)">Wissen:</strong> Verwijdert alle data van die sectie. Niet ongedaan te maken.
-      </div>
-    </div>
-  `;
+    // Gebruikersbeheer
+    '<div class="card" style="margin-bottom:16px">' +
+      '<div class="card-header">' +
+        '<div class="card-title">👥 Gebruikersbeheer</div>' +
+        '<button class="btn btn-primary btn-sm" onclick="showAddUserForm()">+ Gebruiker toevoegen</button>' +
+      '</div>' +
+      '<div id="add-user-form" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px">' +
+        '<div class="form-grid" style="margin-bottom:10px">' +
+          '<div class="form-group"><label>E-mailadres</label><input type="email" id="new-user-email" placeholder="naam@bedrijf.nl"></div>' +
+          '<div class="form-group"><label>Wachtwoord</label><input type="password" id="new-user-pw" placeholder="Min. 6 tekens"></div>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;align-items:center">' +
+          '<button class="btn btn-primary btn-sm" onclick="addUser()">✓ Aanmaken</button>' +
+          '<button class="btn btn-secondary btn-sm" onclick="hideAddUserForm()">Annuleren</button>' +
+          '<span id="add-user-msg" style="font-size:12px"></span>' +
+        '</div>' +
+      '</div>' +
+      '<div id="users-list"><div style="font-size:13px;color:var(--text3);padding:8px 0">Gebruikerslijst wordt geladen...</div></div>' +
+      '<div style="font-size:12px;color:var(--text3);margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">' +
+        '⚠️ Wachtwoorden worden nooit opgeslagen in Firestore.' +
+      '</div>' +
+    '</div>' +
+
+    // Data beheer
+    '<div class="card" style="margin-bottom:16px">' +
+      '<div class="card-header"><div class="card-title">💾 Data beheer</div></div>' +
+      ['leveranciers','projecten','bestellingen','assets','pakbonnen','contacten'].map(col =>
+        '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)">' +
+          '<div>' +
+            '<div style="font-weight:600;text-transform:capitalize">' + col + '</div>' +
+            '<div style="font-size:12px;color:var(--text2)">' + counts[col] + ' items</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:6px">' +
+            '<button class="btn btn-secondary btn-sm" onclick="exportCSV(\'' + col + '\')">⬇ Export</button>' +
+            '<button class="btn btn-danger btn-sm" onclick="clearData(\'' + col + '\')">🗑 Wissen</button>' +
+          '</div>' +
+        '</div>'
+      ).join('') +
+    '</div>' +
+
+    // Instructies
+    '<div class="card">' +
+      '<div class="card-header"><div class="card-title">ℹ️ Instructies</div></div>' +
+      '<div style="font-size:13px;color:var(--text2);line-height:1.8">' +
+        '<strong style="color:var(--text)">Contacten:</strong> Sla ontvangers en uitgevers op voor hergebruik bij uitgifte.<br>' +
+        '<strong style="color:var(--text)">Export:</strong> Download de data als CSV-bestand (backup).<br>' +
+        '<strong style="color:var(--text)">Wissen:</strong> Verwijdert alle data van die sectie. Niet ongedaan te maken.' +
+      '</div>' +
+    '</div>';
+
+  renderContactenList();
+  setTimeout(loadUsers, 100);
 }
 
-async function clearData(col) {
-  confirm(`${col} wissen`, `Weet je zeker dat je <strong>alle ${col}</strong> wilt verwijderen? Dit is niet ongedaan te maken.`, async () => {
-    await DB.bulkReplace(col, []);
-    toast(`${col} gewist`);
-    renderInstellingen();
-    renderPage(APP.page);
+// ── Contacten ──
+let contactEditId = null;
+
+function showContactForm(contact) {
+  contactEditId = contact ? contact.id : null;
+  document.getElementById('contact-form-container').innerHTML =
+    '<div class="form-card">' +
+      '<div class="card-header"><div class="card-title">' + (contact ? '✏ Contact bewerken' : '+ Nieuw contact') + '</div></div>' +
+      '<div class="form-grid">' +
+        '<div class="form-group"><label>Type *</label>' +
+          '<select id="cf-type">' +
+            '<option value="ontvanger" ' + (!contact || contact.type==='ontvanger'?'selected':'') + '>Ontvanger</option>' +
+            '<option value="uitgever"  ' + (contact?.type==='uitgever'?'selected':'') + '>Uitgever</option>' +
+          '</select>' +
+        '</div>' +
+        '<div class="form-group"><label>Naam *</label><input id="cf-naam" value="' + esc(contact?.naam||'') + '" placeholder="Naam"></div>' +
+        '<div class="form-group"><label>Firma</label><input id="cf-firma" value="' + esc(contact?.firma||'') + '" placeholder="Bedrijfsnaam"></div>' +
+        '<div class="form-group full"><label>Adres</label><input id="cf-adres" value="' + esc(contact?.adres||'') + '" placeholder="Straat + huisnummer"></div>' +
+        '<div class="form-group"><label>Postcode</label><input id="cf-pc" value="' + esc(contact?.pc||'') + '" placeholder="1234 AB"></div>' +
+        '<div class="form-group"><label>Plaats</label><input id="cf-plaats" value="' + esc(contact?.plaats||'') + '" placeholder="Stad"></div>' +
+        '<div class="form-group full"><label>Logo URL (alleen uitgever)</label><input id="cf-logo" value="' + esc(contact?.logo||'') + '" placeholder="https://..."></div>' +
+      '</div>' +
+      '<div class="form-actions">' +
+        '<button class="btn btn-primary" onclick="saveContact()">✓ Opslaan</button>' +
+        '<button class="btn btn-secondary" onclick="closeContactForm()">Annuleren</button>' +
+      '</div>' +
+    '</div>';
+}
+
+function closeContactForm() {
+  document.getElementById('contact-form-container').innerHTML = '';
+  contactEditId = null;
+}
+
+async function saveContact() {
+  const naam = document.getElementById('cf-naam').value.trim();
+  if (!naam) { toast('Naam is verplicht', 'error'); return; }
+  const data = {
+    type:   document.getElementById('cf-type').value,
+    naam,
+    firma:  document.getElementById('cf-firma').value.trim(),
+    adres:  document.getElementById('cf-adres').value.trim(),
+    pc:     document.getElementById('cf-pc').value.trim(),
+    plaats: document.getElementById('cf-plaats').value.trim(),
+    logo:   document.getElementById('cf-logo').value.trim()
+  };
+  if (contactEditId) {
+    await DB.update('contacten', contactEditId, data);
+    toast('Contact bijgewerkt', 'success');
+  } else {
+    await DB.add('contacten', data);
+    toast('Contact opgeslagen', 'success');
+  }
+  closeContactForm();
+  renderContactenList();
+}
+
+function renderContactenList() {
+  const el = document.getElementById('contacten-list');
+  if (!el) return;
+  const contacten = DB.getAll('contacten');
+  if (!contacten.length) {
+    el.innerHTML = '<div style="font-size:13px;color:var(--text3);padding:8px 0">Nog geen contacten opgeslagen.</div>';
+    return;
+  }
+  const ontvangers = contacten.filter(c => c.type === 'ontvanger');
+  const uitgevers  = contacten.filter(c => c.type === 'uitgever');
+
+  function renderGroep(lijst, label) {
+    if (!lijst.length) return '';
+    return '<div style="margin-bottom:12px">' +
+      '<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">' + label + '</div>' +
+      lijst.map(c =>
+        '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin-bottom:6px">' +
+          '<div>' +
+            '<div style="font-weight:600;font-size:13px">' + esc(c.naam) + (c.firma ? ' <span style="color:var(--text2);font-weight:400">— ' + esc(c.firma) + '</span>' : '') + '</div>' +
+            (c.adres ? '<div style="font-size:12px;color:var(--text3)">' + esc(c.adres) + ', ' + esc(c.pc) + ' ' + esc(c.plaats) + '</div>' : '') +
+          '</div>' +
+          '<div style="display:flex;gap:4px">' +
+            '<button class="btn btn-ghost btn-sm" onclick=\'showContactForm(' + JSON.stringify(c).replace(/'/g,"&#39;") + ')\'>✏</button>' +
+            '<button class="btn btn-danger btn-sm" onclick="deleteContact(\'' + c.id + '\',\'' + esc(c.naam) + '\')">🗑</button>' +
+          '</div>' +
+        '</div>'
+      ).join('') +
+    '</div>';
+  }
+
+  el.innerHTML = renderGroep(ontvangers, 'Ontvangers') + renderGroep(uitgevers, 'Uitgevers');
+}
+
+async function deleteContact(id, naam) {
+  confirm('Contact verwijderen', 'Verwijder <strong>' + esc(naam) + '</strong>?', async () => {
+    await DB.delete('contacten', id);
+    toast('Contact verwijderd');
+    renderContactenList();
   });
 }
 
-// ════════════════════════════════════════════════════════════
-//  CSV EXPORT / IMPORT
-// ════════════════════════════════════════════════════════════
 
-function exportCSV(type) {
-  if (type === 'leveranciers') {
-    const rows = [['Naam','Contactpersoon','Telefoon','E-mail','Opmerkingen']];
-    DB.getAll('leveranciers').forEach(l => rows.push([l.naam,l.contact,l.telefoon,l.email,l.opmerkingen]));
-    csvDownload('leveranciers.csv', rows);
-  }
-  else if (type === 'projecten') {
-    const rows = [['Projectnummer','Projectnaam','Subproject','Regelkast']];
-    DB.getAll('projecten').forEach(p => {
-      (p.subprojecten||[]).forEach(s => {
-        if (s.regelkasten?.length) s.regelkasten.forEach(rk => rows.push([p.nummer,p.naam,s.naam,rk]));
-        else rows.push([p.nummer,p.naam,s.naam,'']);
-      });
-      if (!p.subprojecten?.length) rows.push([p.nummer,p.naam,'','']);
-    });
-    csvDownload('projecten.csv', rows);
-  }
-  else if (type === 'bestellingen') {
-    const rows = [['Status','Leverancier','Project','Subproject','Offertenr','Offertedatum','IO Nr','Besteldatum','OB Nr','Lev.bestelnr','Verw.levering','Pakbonnr','Leverdatum','Merk','Type','Aantal','Opmerking']];
-    DB.getAll('bestellingen').forEach(b => {
-      (b.artikelen||[{merk:'',type:'',aantal:'',opmerking:''}]).forEach(a => {
-        rows.push([b.status,b.leverancierNaam,b.projectNummer,b.subprojectNaam,b.offertenr,b.offertedatum,b.io,b.besteldatum,b.ob,b.levbestelnr,b.verwlevering,b.pakbon,b.leverdatum,a.merk,a.type,a.aantal,a.opmerking]);
-      });
-    });
-    csvDownload('bestellingen.csv', rows);
-  }
-  else if (type === 'assets' || type === 'uitgifte') {
-    const rows = [['Regelkast','Opnemercode','Merk','Type','Status','Uitgiftedatum','Aan wie','Firma']];
-    const filter = type === 'uitgifte' ? a => a.status === 'uitgegeven' : () => true;
-    DB.getAll('assets').filter(filter).forEach(a => rows.push([a.regelkast,a.code,a.merk,a.type,a.status,a.uitgiftedatum,a.aanWie,a.firma]));
-    csvDownload(type+'.csv', rows);
-  }
-  else if (type === 'overzicht') {
-    const assets = DB.getAll('assets');
-    const f = APP.overzichtFilter;
-    let filtered = assets;
-    if (f.regelkasten.length) filtered = filtered.filter(a => f.regelkasten.includes(a.regelkast));
-    if (f.type) filtered = filtered.filter(a => `${a.merk}|||${a.type}` === f.type);
-    const groups = {};
-    filtered.forEach(a => {
-      const k = `${a.merk}|||${a.type}`;
-      if (!groups[k]) groups[k] = { merk:a.merk, type:a.type, items:[] };
-      groups[k].items.push(a);
-    });
-    const rows = [['Merk','Type','Totaal','Beschikbaar','Uitgegeven','Regelkasten']];
-    Object.values(groups).forEach(g => {
-      const bes = g.items.filter(a=>a.status!=='uitgegeven').length;
-      const uit = g.items.filter(a=>a.status==='uitgegeven').length;
-      const rks = [...new Set(g.items.map(a=>a.regelkast))].join('; ');
-      rows.push([g.merk,g.type,g.items.length,bes,uit,rks]);
-    });
-    csvDownload('overzicht.csv', rows);
-  }
-}
-
-async function importCSV(col, input) {
-  const file = input.files[0];
-  if (!file) return;
-  const text = await file.text();
-  const lines = text.replace(/^\uFEFF/,'').split('\n').filter(l=>l.trim());
-  const parse = line => {
-    const cols = []; let cur = ''; let inQ = false;
-    for (const c of line) {
-      if (c === '"') inQ = !inQ;
-      else if (c === ',' && !inQ) { cols.push(cur); cur=''; }
-      else cur += c;
-    }
-    cols.push(cur);
-    return cols.map(c => c.replace(/^"|"$/g,'').replace(/""/g,'"'));
-  };
-
-  try {
-    let items = [];
-    if (col === 'leveranciers') {
-      items = lines.slice(1).map(l => { const c=parse(l); return { id:String(Date.now()+Math.random()), naam:c[0],contact:c[1],telefoon:c[2],email:c[3],opmerkingen:c[4] }; });
-    } else if (col === 'assets') {
-      items = lines.slice(1).map(l => { const c=parse(l); return { id:String(Date.now()+Math.random()), regelkast:c[0],code:c[1],merk:c[2],type:c[3],status:c[4],uitgiftedatum:c[5],aanWie:c[6],firma:c[7] }; });
-    } else {
-      toast(`Import voor ${col} wordt niet ondersteund via CSV`, 'error'); return;
-    }
-    await DB.bulkReplace(col, items);
-    toast(`${items.length} ${col} geïmporteerd`, 'success');
-    renderInstellingen();
-  } catch(e) {
-    toast('Import mislukt: controleer het CSV-formaat', 'error');
-  }
-  input.value = '';
-}
-
-// ════════════════════════════════════════════════════════════
 //  GEBRUIKERSBEHEER
 // ════════════════════════════════════════════════════════════
 
@@ -2079,6 +2347,7 @@ window.doResetPassword = async function doResetPassword(email) {
 }
 
 
+
 // Boot
 window.addEventListener('DOMContentLoaded', () => {
   // Firebase initialiseren
@@ -2170,6 +2439,10 @@ window.doLogin = async function doLogin() {
 window.doLogout = async function doLogout() {
   await firebase.auth().signOut();
 }
+</script>
+</body>
+</html>
+
 </script>
 </body>
 </html>

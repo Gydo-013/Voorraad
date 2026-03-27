@@ -1981,18 +1981,18 @@ async function importCSV(col, input) {
 //  GEBRUIKERSBEHEER
 // ════════════════════════════════════════════════════════════
 
-function showAddUserForm() {
+window.showAddUserForm = function showAddUserForm() {
   document.getElementById('add-user-form').style.display = '';
   document.getElementById('new-user-email').focus();
 }
-function hideAddUserForm() {
+window.hideAddUserForm = function hideAddUserForm() {
   document.getElementById('add-user-form').style.display = 'none';
   document.getElementById('new-user-email').value = '';
   document.getElementById('new-user-pw').value = '';
   document.getElementById('add-user-msg').textContent = '';
 }
 
-async function addUser() {
+window.addUser = async function addUser() {
   const email = document.getElementById('new-user-email').value.trim();
   const pw    = document.getElementById('new-user-pw').value;
   const msg   = document.getElementById('add-user-msg');
@@ -2022,7 +2022,7 @@ async function addUser() {
   }
 }
 
-async function loadUsers() {
+window.loadUsers = async function loadUsers() {
   const el = document.getElementById('users-list');
   if (!el) return;
   if (!_fbConnected) {
@@ -2057,7 +2057,7 @@ async function loadUsers() {
   }
 }
 
-async function deleteUser(uid, email) {
+window.deleteUser = async function deleteUser(uid, email) {
   confirm('Gebruiker verwijderen', 'Verwijder <strong>' + esc(email) + '</strong> uit het systeem?', async () => {
     try {
       await _db.collection('users').doc(uid).delete();
@@ -2069,7 +2069,7 @@ async function deleteUser(uid, email) {
   });
 }
 
-async function doResetPassword(email) {
+window.doResetPassword = async function doResetPassword(email) {
   try {
     await firebase.auth().sendPasswordResetEmail(email);
     toast('Wachtwoord reset e-mail verstuurd naar ' + email, 'success');
@@ -2122,7 +2122,7 @@ window.addEventListener('DOMContentLoaded', () => {
 // ── Auth state ──
 let _currentUser = null;
 
-function updateNavUser(user) {
+window.updateNavUser = function updateNavUser(user) {
   let el = document.getElementById('nav-user');
   if (!el) {
     el = document.createElement('div');
@@ -2137,7 +2137,7 @@ function updateNavUser(user) {
   \`;
 }
 
-async function doLogin() {
+window.doLogin = async function doLogin() {
   const email = document.getElementById('login-email').value.trim();
   const pw    = document.getElementById('login-pw').value;
   const errEl = document.getElementById('login-error');
@@ -2168,7 +2168,7 @@ async function doLogin() {
   }
 }
 
-async function doLogout() {
+window.doLogout = async function doLogout() {
   await firebase.auth().signOut();
 }
 </script>

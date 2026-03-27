@@ -2044,8 +2044,8 @@ window.loadUsers = async function loadUsers() {
         '<td style="font-size:12px;color:var(--text2)">' + datum + '</td>' +
         '<td style="font-size:12px;color:var(--text2)">' + esc(u.aangemaaktDoor || '—') + '</td>' +
         '<td class="td-actions">' +
-          '<button class="btn btn-ghost btn-sm" title="Stuur wachtwoord reset e-mail" onclick="doResetPassword('' + esc(u.email) + '')">🔑</button>' +
-          (!isSelf ? '<button class="btn btn-danger btn-sm" onclick="deleteUser('' + u.id + '','' + esc(u.email) + '')">🗑</button>' : '') +
+          '<button class="btn btn-ghost btn-sm" title="Stuur wachtwoord reset e-mail" onclick="doResetPassword(\'' + esc(u.email) + '\')">🔑</button>' +
+          (!isSelf ? '<button class="btn btn-danger btn-sm" onclick="deleteUser(\'' + u.id + '\',\'' + esc(u.email) + '\')">🗑</button>' : '') +
         '</td>' +
       '</tr>';
     }).join('');
